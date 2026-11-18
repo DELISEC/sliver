@@ -46,7 +46,8 @@ type registerExtensionArgs struct {
 	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
 	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
 	Name           string `json:"name" jsonschema:"description=Extension name,required"`
-	Data           string `json:"data" jsonschema:"description=Base64-encoded extension data,required"`
+	FilePath       string `json:"file_path" jsonschema:"description=Local path to extension file (preferred over data)"`
+	Data           string `json:"data" jsonschema:"description=Base64-encoded extension data (use file_path instead when possible)"`
 	OS             string `json:"os" jsonschema:"description=Target OS (windows/linux/darwin),required"`
 	Init           string `json:"init" jsonschema:"description=Init function name"`
 	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task"`
@@ -56,7 +57,8 @@ type registerExtensionArgs struct {
 type executeBOFArgs struct {
 	SessionID      string        `json:"session_id" jsonschema:"description=Session ID"`
 	BeaconID       string        `json:"beacon_id" jsonschema:"description=Beacon ID"`
-	BOFData        string        `json:"bof_data" jsonschema:"description=Base64-encoded BOF .o file,required"`
+	BOFPath        string        `json:"bof_path" jsonschema:"description=Local path to BOF .o file (preferred over bof_data)"`
+	BOFData        string        `json:"bof_data" jsonschema:"description=Base64-encoded BOF .o file (use bof_path instead when possible)"`
 	Arguments      []bofArgument `json:"arguments" jsonschema:"description=BOF arguments"`
 	Wait           bool          `json:"wait" jsonschema:"description=Wait for beacon task"`
 	TimeoutSeconds int64         `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
@@ -174,8 +176,21 @@ func (s *SliverMCPServer) callExtensionHandler(ctx context.Context, request mcpa
 	}
 
 	return mcpapi.NewToolResultStructuredOnly(extensionResult{
-		Output: base64.StdEncoding.EncodeToString(resp.Output),
+		Output: string(resp.Output),
 	}), nil
+}
+
+// bofOutputString reads BOF output from either the structured BOFOutputs field
+// (used when WantBOFOutputs is set) or the legacy Output field.
+func bofOutputString(resp *sliverpb.CallExtension) string {
+	if len(resp.BOFOutputs) > 0 {
+		var buf []byte
+		for _, rec := range resp.BOFOutputs {
+			buf = append(buf, rec.Data...)
+		}
+		return string(buf)
+	}
+	return string(resp.Output)
 }
 
 func (s *SliverMCPServer) listExtensionsHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -240,9 +255,19 @@ func (s *SliverMCPServer) registerExtensionHandler(ctx context.Context, request 
 	}
 	s.logToolCall(registerExtensionToolName, args.SessionID, args.BeaconID)
 
-	data, err := base64.StdEncoding.DecodeString(args.Data)
-	if err != nil {
-		return mcpapi.NewToolResultError(fmt.Sprintf("invalid base64 data: %v", err)), nil
+	var data []byte
+	if args.FilePath != "" {
+		data, err = os.ReadFile(args.FilePath)
+		if err != nil {
+			return mcpapi.NewToolResultError(fmt.Sprintf("failed to read file %s: %v", args.FilePath, err)), nil
+		}
+	} else if args.Data != "" {
+		data, err = base64.StdEncoding.DecodeString(args.Data)
+		if err != nil {
+			return mcpapi.NewToolResultError(fmt.Sprintf("invalid base64 data: %v", err)), nil
+		}
+	} else {
+		return mcpapi.NewToolResultError("either file_path or data is required"), nil
 	}
 
 	resp, err := s.Rpc.RegisterExtension(ctx, &sliverpb.RegisterExtensionReq{
@@ -337,9 +362,19 @@ func (s *SliverMCPServer) executeBOFHandler(ctx context.Context, request mcpapi.
 	}
 	s.logToolCall(executeBOFToolName, args.SessionID, args.BeaconID)
 
-	bofData, err := base64.StdEncoding.DecodeString(args.BOFData)
-	if err != nil {
-		return mcpapi.NewToolResultError(fmt.Sprintf("invalid base64 bof_data: %v", err)), nil
+	var bofData []byte
+	if args.BOFPath != "" {
+		bofData, err = os.ReadFile(args.BOFPath)
+		if err != nil {
+			return mcpapi.NewToolResultError(fmt.Sprintf("failed to read BOF file %s: %v", args.BOFPath, err)), nil
+		}
+	} else if args.BOFData != "" {
+		bofData, err = base64.StdEncoding.DecodeString(args.BOFData)
+		if err != nil {
+			return mcpapi.NewToolResultError(fmt.Sprintf("invalid base64 bof_data: %v", err)), nil
+		}
+	} else {
+		return mcpapi.NewToolResultError("either bof_path or bof_data is required"), nil
 	}
 
 	var packedArgs []byte
@@ -379,8 +414,12 @@ func (s *SliverMCPServer) executeBOFHandler(ctx context.Context, request mcpapi.
 		resp = waited
 	}
 
+	output := bofOutputString(resp)
+	if output == "" && resp.Response != nil && resp.Response.Err != "" {
+		return mcpapi.NewToolResultError(fmt.Sprintf("BOF error: %s", resp.Response.Err)), nil
+	}
 	return mcpapi.NewToolResultStructuredOnly(extensionResult{
-		Output: base64.StdEncoding.EncodeToString(resp.Output),
+		Output: output,
 	}), nil
 }
 
@@ -519,7 +558,11 @@ func (s *SliverMCPServer) runBOFModuleHandler(ctx context.Context, request mcpap
 		resp = waited
 	}
 
+	output := bofOutputString(resp)
+	if output == "" && resp.Response != nil && resp.Response.Err != "" {
+		return mcpapi.NewToolResultError(fmt.Sprintf("BOF error: %s", resp.Response.Err)), nil
+	}
 	return mcpapi.NewToolResultStructuredOnly(extensionResult{
-		Output: base64.StdEncoding.EncodeToString(resp.Output),
+		Output: output,
 	}), nil
 }
