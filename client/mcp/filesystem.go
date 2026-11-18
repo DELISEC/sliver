@@ -22,8 +22,14 @@ const (
 	mkdirToolName = "fs_mkdir"
 	chmodToolName = "fs_chmod"
 	chownToolName    = "fs_chown"
-	downloadToolName = "download_file"
-	uploadToolName   = "upload_file"
+	downloadToolName    = "download_file"
+	uploadToolName      = "upload_file"
+	grepToolName        = "fs_grep"
+	chtimesToolName     = "fs_chtimes"
+	mountToolName       = "fs_mount"
+	memfilesListToolName = "fs_memfiles_list"
+	memfilesAddToolName  = "fs_memfiles_add"
+	memfilesRmToolName   = "fs_memfiles_rm"
 )
 
 type lsArgs struct {
@@ -1095,4 +1101,435 @@ func (s *SliverMCPServer) uploadFileHandler(ctx context.Context, request mcpapi.
 		Path:         resp.Path,
 		WrittenFiles: resp.WrittenFiles,
 	}), nil
+}
+
+// --- Tier 2: Grep ---
+
+type grepArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	SearchPattern  string `json:"search_pattern" jsonschema:"description=Regex search pattern,required"`
+	Path           string `json:"path" jsonschema:"description=Path to search in,required"`
+	Recursive      bool   `json:"recursive" jsonschema:"description=Search recursively"`
+	LinesBefore    int32  `json:"lines_before" jsonschema:"description=Context lines before match"`
+	LinesAfter     int32  `json:"lines_after" jsonschema:"description=Context lines after match"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type grepMatchResult struct {
+	LineNumber  int64    `json:"line_number"`
+	Line        string   `json:"line"`
+	LinesBefore []string `json:"lines_before,omitempty"`
+	LinesAfter  []string `json:"lines_after,omitempty"`
+}
+
+type grepFileResult struct {
+	File     string            `json:"file"`
+	IsBinary bool              `json:"is_binary"`
+	Matches  []grepMatchResult `json:"matches"`
+}
+
+type grepResult struct {
+	SearchPath string           `json:"search_path"`
+	Files      []grepFileResult `json:"files"`
+	FileCount  int              `json:"file_count"`
+}
+
+func (s *SliverMCPServer) grepHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args grepArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(grepToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.Grep(ctx, &sliverpb.GrepReq{
+		SearchPattern: args.SearchPattern,
+		Path:          args.Path,
+		Recursive:     args.Recursive,
+		LinesBefore:   args.LinesBefore,
+		LinesAfter:    args.LinesAfter,
+		Request:       req,
+	})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("grep failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("fs_grep", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.Grep{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	result := grepResult{
+		SearchPath: resp.SearchPathAbsolute,
+		Files:      make([]grepFileResult, 0),
+	}
+	for file, fileResults := range resp.Results {
+		if fileResults == nil {
+			continue
+		}
+		fr := grepFileResult{
+			File:     file,
+			IsBinary: fileResults.IsBinary,
+			Matches:  make([]grepMatchResult, 0, len(fileResults.FileResults)),
+		}
+		for _, m := range fileResults.FileResults {
+			if m == nil {
+				continue
+			}
+			fr.Matches = append(fr.Matches, grepMatchResult{
+				LineNumber:  m.LineNumber,
+				Line:        m.Line,
+				LinesBefore: m.LinesBefore,
+				LinesAfter:  m.LinesAfter,
+			})
+		}
+		result.Files = append(result.Files, fr)
+	}
+	result.FileCount = len(result.Files)
+
+	return mcpapi.NewToolResultStructuredOnly(result), nil
+}
+
+// --- Tier 2: Chtimes ---
+
+type chtimesArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	Path           string `json:"path" jsonschema:"description=File path,required"`
+	ATime          int64  `json:"atime" jsonschema:"description=Access time (Unix timestamp),required"`
+	MTime          int64  `json:"mtime" jsonschema:"description=Modification time (Unix timestamp),required"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type chtimesResult struct {
+	Path string `json:"path"`
+}
+
+func (s *SliverMCPServer) chtimesHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args chtimesArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(chtimesToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.Chtimes(ctx, &sliverpb.ChtimesReq{
+		Path:    args.Path,
+		ATime:   args.ATime,
+		MTime:   args.MTime,
+		Request: req,
+	})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("chtimes failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("fs_chtimes", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.Chtimes{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(chtimesResult{Path: resp.Path}), nil
+}
+
+// --- Tier 2: Mount ---
+
+type mountArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type mountInfoResult struct {
+	VolumeName   string `json:"volume_name"`
+	VolumeType   string `json:"volume_type"`
+	MountPoint   string `json:"mount_point"`
+	Label        string `json:"label"`
+	FileSystem   string `json:"file_system"`
+	UsedSpace    uint64 `json:"used_space"`
+	FreeSpace    uint64 `json:"free_space"`
+	TotalSpace   uint64 `json:"total_space"`
+	MountOptions string `json:"mount_options,omitempty"`
+}
+
+type mountResult struct {
+	Mounts []mountInfoResult `json:"mounts"`
+	Count  int               `json:"count"`
+}
+
+func (s *SliverMCPServer) mountHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args mountArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(mountToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.Mount(ctx, &sliverpb.MountReq{Request: req})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("mount failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("fs_mount", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.Mount{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	result := mountResult{
+		Mounts: make([]mountInfoResult, 0, len(resp.Info)),
+	}
+	for _, m := range resp.Info {
+		if m == nil {
+			continue
+		}
+		result.Mounts = append(result.Mounts, mountInfoResult{
+			VolumeName:   m.VolumeName,
+			VolumeType:   m.VolumeType,
+			MountPoint:   m.MountPoint,
+			Label:        m.Label,
+			FileSystem:   m.FileSystem,
+			UsedSpace:    m.UsedSpace,
+			FreeSpace:    m.FreeSpace,
+			TotalSpace:   m.TotalSpace,
+			MountOptions: m.MountOptions,
+		})
+	}
+	result.Count = len(result.Mounts)
+
+	return mcpapi.NewToolResultStructuredOnly(result), nil
+}
+
+// --- Tier 2: Memfiles ---
+
+type memfilesListArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type memfilesAddArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type memfilesRmArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	Fd             int64  `json:"fd" jsonschema:"description=File descriptor to remove,required"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type memfileResult struct {
+	Fd int64 `json:"fd"`
+}
+
+func (s *SliverMCPServer) memfilesListHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args memfilesListArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(memfilesListToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.MemfilesList(ctx, &sliverpb.MemfilesListReq{Request: req})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("memfiles list failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("fs_memfiles_list", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.Ls{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	result := lsResult{
+		Path:   resp.Path,
+		Exists: resp.Exists,
+		Files:  make([]lsFileEntry, 0, len(resp.Files)),
+	}
+	for _, f := range resp.Files {
+		if f == nil {
+			continue
+		}
+		result.Files = append(result.Files, lsFileEntry{
+			Name:    f.Name,
+			IsDir:   f.IsDir,
+			Size:    f.Size,
+			ModTime: f.ModTime,
+			Mode:    f.Mode,
+		})
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(result), nil
+}
+
+func (s *SliverMCPServer) memfilesAddHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args memfilesAddArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(memfilesAddToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.MemfilesAdd(ctx, &sliverpb.MemfilesAddReq{Request: req})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("memfiles add failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("fs_memfiles_add", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.MemfilesAdd{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(memfileResult{Fd: resp.Fd}), nil
+}
+
+func (s *SliverMCPServer) memfilesRmHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args memfilesRmArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(memfilesRmToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.MemfilesRm(ctx, &sliverpb.MemfilesRmReq{
+		Fd:      args.Fd,
+		Request: req,
+	})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("memfiles rm failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("fs_memfiles_rm", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.MemfilesRm{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(memfileResult{Fd: resp.Fd}), nil
 }

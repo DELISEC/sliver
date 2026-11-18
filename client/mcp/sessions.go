@@ -16,7 +16,9 @@ const (
 	beaconInfoToolName       = "beacon_info"
 	killBeaconToolName       = "kill_beacon"
 	listBeaconTasksToolName  = "list_beacon_tasks"
-	cancelBeaconTaskToolName = "cancel_beacon_task"
+	cancelBeaconTaskToolName  = "cancel_beacon_task"
+	reconfigureImplantToolName = "reconfigure_implant"
+	renameImplantToolName      = "rename_implant"
 )
 
 // --- Args structs ---
@@ -262,3 +264,109 @@ func (s *SliverMCPServer) cancelBeaconTaskHandler(ctx context.Context, request m
 		CompletedAt: task.CompletedAt,
 	}), nil
 }
+
+// --- Tier 2: Reconfigure Implant ---
+
+type reconfigureImplantArgs struct {
+	SessionID          string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID           string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	ReconnectInterval  int64  `json:"reconnect_interval" jsonschema:"description=Reconnect interval in nanoseconds"`
+	BeaconInterval     int64  `json:"beacon_interval" jsonschema:"description=Beacon check-in interval in nanoseconds"`
+	BeaconJitter       int64  `json:"beacon_jitter" jsonschema:"description=Beacon jitter in nanoseconds"`
+	C2URI              string `json:"c2_uri" jsonschema:"description=New C2 URI"`
+	Wait               bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds     int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type reconfigureResult struct {
+	Success bool `json:"success"`
+}
+
+func (s *SliverMCPServer) reconfigureImplantHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args reconfigureImplantArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(reconfigureImplantToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.Reconfigure(ctx, &sliverpb.ReconfigureReq{
+		ReconnectInterval: args.ReconnectInterval,
+		BeaconInterval:    args.BeaconInterval,
+		BeaconJitter:      args.BeaconJitter,
+		C2URI:             args.C2URI,
+		Request:           req,
+	})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("reconfigure failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("reconfigure_implant", taskID, args.BeaconID), nil
+		}
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.Reconfigure{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(reconfigureResult{Success: true}), nil
+}
+
+// --- Tier 2: Rename Implant ---
+
+type renameImplantArgs struct {
+	SessionID string `json:"session_id" jsonschema:"description=Session ID to rename"`
+	BeaconID  string `json:"beacon_id" jsonschema:"description=Beacon ID to rename"`
+	Name      string `json:"name" jsonschema:"description=New name for the implant,required"`
+}
+
+type renameResult struct {
+	Name    string `json:"name"`
+	Success bool   `json:"success"`
+}
+
+func (s *SliverMCPServer) renameImplantHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args renameImplantArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	if args.SessionID == "" && args.BeaconID == "" {
+		return mcpapi.NewToolResultError("session_id or beacon_id is required"), nil
+	}
+	s.logToolCall(renameImplantToolName, args.SessionID, args.BeaconID)
+
+	if _, err := s.Rpc.Rename(ctx, &clientpb.RenameReq{
+		SessionID: args.SessionID,
+		BeaconID:  args.BeaconID,
+		Name:      args.Name,
+	}); err != nil {
+		return mcpapi.NewToolResultErrorFromErr("rename failed", err), nil
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(renameResult{
+		Name:    args.Name,
+		Success: true,
+	}), nil
+}
+

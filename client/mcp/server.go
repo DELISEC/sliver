@@ -376,6 +376,149 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	// Tier 1: Screenshot
 	srv.server.AddTool(screenshotTool, srv.screenshotHandler)
 
+	// ===== Tier 2: Core Operations =====
+
+	// Tier 2: Filesystem
+	grepTool := mcpapi.NewTool(grepToolName,
+		mcpapi.WithDescription("Search file contents on the implant using regex patterns."),
+		mcpapi.WithInputSchema[grepArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	chtimesTool := mcpapi.NewTool(chtimesToolName,
+		mcpapi.WithDescription("Change file access and modification timestamps (timestomping)."),
+		mcpapi.WithInputSchema[chtimesArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	mountTool := mcpapi.NewTool(mountToolName,
+		mcpapi.WithDescription("List mounted filesystems/volumes on the implant."),
+		mcpapi.WithInputSchema[mountArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	memfilesListTool := mcpapi.NewTool(memfilesListToolName,
+		mcpapi.WithDescription("List in-memory files on the implant."),
+		mcpapi.WithInputSchema[memfilesListArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	memfilesAddTool := mcpapi.NewTool(memfilesAddToolName,
+		mcpapi.WithDescription("Create a new in-memory file on the implant."),
+		mcpapi.WithInputSchema[memfilesAddArgs](),
+	)
+	memfilesRmTool := mcpapi.NewTool(memfilesRmToolName,
+		mcpapi.WithDescription("Remove an in-memory file by file descriptor."),
+		mcpapi.WithInputSchema[memfilesRmArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(grepTool, srv.grepHandler)
+	srv.server.AddTool(chtimesTool, srv.chtimesHandler)
+	srv.server.AddTool(mountTool, srv.mountHandler)
+	srv.server.AddTool(memfilesListTool, srv.memfilesListHandler)
+	srv.server.AddTool(memfilesAddTool, srv.memfilesAddHandler)
+	srv.server.AddTool(memfilesRmTool, srv.memfilesRmHandler)
+
+	// Tier 2: Processes
+	terminateProcessTool := mcpapi.NewTool(terminateProcessToolName,
+		mcpapi.WithDescription("Terminate a process by PID on the implant."),
+		mcpapi.WithInputSchema[terminateProcessArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	processDumpTool := mcpapi.NewTool(processDumpToolName,
+		mcpapi.WithDescription("Dump the memory of a process by PID (returns base64-encoded data)."),
+		mcpapi.WithInputSchema[processDumpArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	srv.server.AddTool(terminateProcessTool, srv.terminateProcessHandler)
+	srv.server.AddTool(processDumpTool, srv.processDumpHandler)
+
+	// Tier 2: Environment
+	setEnvironmentTool := mcpapi.NewTool(setEnvironmentToolName,
+		mcpapi.WithDescription("Set an environment variable on the implant."),
+		mcpapi.WithInputSchema[setEnvironmentArgs](),
+	)
+	unsetEnvironmentTool := mcpapi.NewTool(unsetEnvironmentToolName,
+		mcpapi.WithDescription("Remove an environment variable on the implant."),
+		mcpapi.WithInputSchema[unsetEnvironmentArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(setEnvironmentTool, srv.setEnvironmentHandler)
+	srv.server.AddTool(unsetEnvironmentTool, srv.unsetEnvironmentHandler)
+
+	// Tier 2: Execution
+	executeAssemblyTool := mcpapi.NewTool(executeAssemblyToolName,
+		mcpapi.WithDescription("Execute a .NET assembly in-memory on the implant (Windows)."),
+		mcpapi.WithInputSchema[executeAssemblyArgs](),
+	)
+	sideloadTool := mcpapi.NewTool(sideloadToolName,
+		mcpapi.WithDescription("Load and execute a shared library (DLL/dylib/so) in a sacrificial process."),
+		mcpapi.WithInputSchema[sideloadArgs](),
+	)
+	spawnDllTool := mcpapi.NewTool(spawnDllToolName,
+		mcpapi.WithDescription("Spawn a DLL in a sacrificial process and call an entry point (Windows)."),
+		mcpapi.WithInputSchema[spawnDllArgs](),
+	)
+	runSSHCommandTool := mcpapi.NewTool(runSSHCommandToolName,
+		mcpapi.WithDescription("Execute a command on a remote host via SSH from the implant."),
+		mcpapi.WithInputSchema[runSSHCommandArgs](),
+	)
+	srv.server.AddTool(executeAssemblyTool, srv.executeAssemblyHandler)
+	srv.server.AddTool(sideloadTool, srv.sideloadHandler)
+	srv.server.AddTool(spawnDllTool, srv.spawnDllHandler)
+	srv.server.AddTool(runSSHCommandTool, srv.runSSHCommandHandler)
+
+	// Tier 2: Registry
+	registryWriteTool := mcpapi.NewTool(registryWriteToolName,
+		mcpapi.WithDescription("Write a value to the Windows registry."),
+		mcpapi.WithInputSchema[registryWriteArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	registryCreateKeyTool := mcpapi.NewTool(registryCreateKeyToolName,
+		mcpapi.WithDescription("Create a new registry key in the Windows registry."),
+		mcpapi.WithInputSchema[registryCreateKeyArgs](),
+	)
+	registryDeleteKeyTool := mcpapi.NewTool(registryDeleteKeyToolName,
+		mcpapi.WithDescription("Delete a registry key from the Windows registry."),
+		mcpapi.WithInputSchema[registryDeleteKeyArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	registryListSubkeysTool := mcpapi.NewTool(registryListSubkeysToolName,
+		mcpapi.WithDescription("List subkeys under a registry key."),
+		mcpapi.WithInputSchema[registryListSubkeysArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	registryListValuesTool := mcpapi.NewTool(registryListValuesToolName,
+		mcpapi.WithDescription("List value names under a registry key."),
+		mcpapi.WithInputSchema[registryListValuesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	registryReadHiveTool := mcpapi.NewTool(registryReadHiveToolName,
+		mcpapi.WithDescription("Dump an entire registry hive (e.g. SAM, SYSTEM, SECURITY) as base64."),
+		mcpapi.WithInputSchema[registryReadHiveArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	srv.server.AddTool(registryWriteTool, srv.registryWriteHandler)
+	srv.server.AddTool(registryCreateKeyTool, srv.registryCreateKeyHandler)
+	srv.server.AddTool(registryDeleteKeyTool, srv.registryDeleteKeyHandler)
+	srv.server.AddTool(registryListSubkeysTool, srv.registryListSubkeysHandler)
+	srv.server.AddTool(registryListValuesTool, srv.registryListValuesHandler)
+	srv.server.AddTool(registryReadHiveTool, srv.registryReadHiveHandler)
+
+	// Tier 2: Sessions
+	reconfigureImplantTool := mcpapi.NewTool(reconfigureImplantToolName,
+		mcpapi.WithDescription("Reconfigure implant settings (reconnect interval, beacon interval/jitter, C2 URI)."),
+		mcpapi.WithInputSchema[reconfigureImplantArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	renameImplantTool := mcpapi.NewTool(renameImplantToolName,
+		mcpapi.WithDescription("Rename a session or beacon implant."),
+		mcpapi.WithInputSchema[renameImplantArgs](),
+	)
+	srv.server.AddTool(reconfigureImplantTool, srv.reconfigureImplantHandler)
+	srv.server.AddTool(renameImplantTool, srv.renameImplantHandler)
+
 	return srv
 }
 
