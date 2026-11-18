@@ -49,7 +49,7 @@ func (s *SliverMCPServer) getEnvironmentHandler(ctx context.Context, request mcp
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -125,7 +125,7 @@ func (s *SliverMCPServer) setEnvironmentHandler(ctx context.Context, request mcp
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -190,7 +190,7 @@ func (s *SliverMCPServer) unsetEnvironmentHandler(ctx context.Context, request m
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}

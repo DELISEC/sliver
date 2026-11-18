@@ -64,6 +64,7 @@ type SliverMCPServer struct {
 	server        *mcpserver.MCPServer
 	logger        *log.Logger
 	BOFModulesDir string
+	OverlordDir   string
 	ZerglingPath  string
 }
 
@@ -76,7 +77,7 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 
 	listSessionsAndBeaconsTool := mcpapi.NewTool(
 		listSessionsAndBeaconsToolName,
-		mcpapi.WithDescription("List active sessions and beacons."),
+		mcpapi.WithDescription("List active sessions and beacons. Sessions are interactive (real-time). Beacons check in periodically (interval + jitter) — check last_checkin/next_checkin/is_dead before tasking a beacon. Dead beacons will not pick up tasks. When using wait:true with a beacon, set timeout_seconds > interval + jitter (e.g. 180s for a 60s/30s beacon)."),
 		mcpapi.WithReadOnlyHintAnnotation(true),
 		mcpapi.WithDestructiveHintAnnotation(false),
 		mcpapi.WithIdempotentHintAnnotation(true),
@@ -251,7 +252,7 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	// --- Tier 1: Execution ---
 	executeTool := mcpapi.NewTool(
 		executeToolName,
-		mcpapi.WithDescription("Execute a command on the remote target."),
+		mcpapi.WithDescription("Execute a command on the remote target. For beacons: the command queues until the next check-in. Use wait:true with timeout_seconds > beacon interval+jitter to wait for results. Rejects dead beacons — use list_sessions_and_beacons to verify liveness first."),
 		mcpapi.WithInputSchema[executeArgs](),
 	)
 
@@ -264,7 +265,7 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	)
 	uploadFileTool := mcpapi.NewTool(
 		uploadToolName,
-		mcpapi.WithDescription("Upload a file to the remote target. Data must be provided as base64."),
+		mcpapi.WithDescription("Upload a file to the remote target. Provide data_base64 (base64-encoded content) OR local_path (path to a file on the operator machine — preferred for large files like implants). Rejects dead beacons. For beacons, set wait:true with timeout_seconds > interval+jitter."),
 		mcpapi.WithInputSchema[uploadFileArgs](),
 		mcpapi.WithDestructiveHintAnnotation(true),
 	)
@@ -320,6 +321,7 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 		server:        base,
 		logger:        logger,
 		BOFModulesDir: cfg.BOFModulesDir,
+		OverlordDir:   cfg.OverlordDir,
 		ZerglingPath:  cfg.ZerglingPath,
 	}
 
@@ -941,6 +943,20 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	srv.server.AddTool(listBOFModulesTool, srv.listBOFModulesHandler)
 	srv.server.AddTool(runBOFModuleTool, srv.runBOFModuleHandler)
 
+	// Overlord suite tools
+	listOverlordSuitesTool := mcpapi.NewTool(listOverlordSuitesToolName,
+		mcpapi.WithDescription("List available Overlord BOF suites (recon, network, privesc, fullrecon, etc.)."),
+		mcpapi.WithInputSchema[listOverlordSuitesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	runOverlordSuiteTool := mcpapi.NewTool(runOverlordSuiteToolName,
+		mcpapi.WithDescription("Run an Overlord BOF suite against a session/beacon. Executes all BOFs in the suite sequentially and returns structured output from each. Use list_overlord_suites to see available suites."),
+		mcpapi.WithInputSchema[runOverlordSuiteArgs](),
+	)
+	srv.server.AddTool(listOverlordSuitesTool, srv.listOverlordSuitesHandler)
+	srv.server.AddTool(runOverlordSuiteTool, srv.runOverlordSuiteHandler)
+
 	// ===== Tier 8: Advanced =====
 
 	// Tier 8: Shellcode tools
@@ -977,7 +993,7 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 
 	// Tier 8: Zergling integration
 	generatePackedImplantTool := mcpapi.NewTool(generatePackedImplantToolName,
-		mcpapi.WithDescription("Generate an implant and pack it with zergling (Rust shellcode packer)."),
+		mcpapi.WithDescription("Generate Sliver shellcode, pack it with zergling (Rust shellcode packer), and save the exe to disk. Returns the local output_path — use upload_file with local_path to deliver it. IMPORTANT: the 'method' field controls injection behavior. create_thread (default) runs shellcode in the loader's own process — the implant dies if the loader exits (e.g. SSH session closes, parent killed). Use early_bird or process_hollow to inject into a new process so the implant survives the loader exiting. All zergling manifest options (syscalls_indirect, etw_patch, amsi_patch, sleep_mask, evasion_noaccess, etc.) are exposed as individual fields, or pass a full manifest via manifest_json."),
 		mcpapi.WithInputSchema[generatePackedImplantArgs](),
 	)
 	srv.server.AddTool(generatePackedImplantTool, srv.generatePackedImplantHandler)

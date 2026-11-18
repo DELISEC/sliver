@@ -80,7 +80,7 @@ func (s *SliverMCPServer) networkInterfacesHandler(ctx context.Context, request 
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -139,7 +139,7 @@ func (s *SliverMCPServer) networkConnectionsHandler(ctx context.Context, request
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
