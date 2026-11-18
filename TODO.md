@@ -75,26 +75,27 @@ Goal: Expand built-in MCP server to ~128 tools, accessible over HTTP to any mult
 - [x] `stop_service` — services.go — StopService
 - [x] `remove_service` — services.go — RemoveService
 
-## Tier 4 — Data Management (17 new → 85 total)
-- [x] `loot_add` — loot.go — LootAdd
-- [x] `loot_rm` — loot.go — LootRm
-- [x] `loot_update` — loot.go — LootUpdate
-- [x] `loot_content` — loot.go — LootContent
-- [x] `loot_list` — loot.go — LootAll
-- [x] `creds_list` — credentials.go — Creds
-- [x] `creds_add` — credentials.go — CredsAdd
-- [x] `creds_rm` — credentials.go — CredsRm
-- [x] `creds_update` — credentials.go — CredsUpdate
-- [x] `creds_get_by_id` — credentials.go — GetCredByID
-- [x] `creds_get_by_hash_type` — credentials.go — GetCredsByHashType
-- [x] `hosts_list` — hosts.go — Hosts
-- [x] `host_info` — hosts.go — Host
-- [x] `host_rm` — hosts.go — HostRm
-- [x] `host_ioc_rm` — hosts.go — HostIOCRm
+## Tier 4 — Data Management (18 new → 86 total)
+- [x] `loot_add` — data.go — LootAdd
+- [x] `loot_rm` — data.go — LootRm
+- [x] `loot_update` — data.go — LootUpdate
+- [x] `loot_content` — data.go — LootContent
+- [x] `loot_list` — data.go — LootAll
+- [x] `creds_list` — data.go — Creds
+- [x] `creds_add` — data.go — CredsAdd
+- [x] `creds_rm` — data.go — CredsRm
+- [x] `creds_update` — data.go — CredsUpdate
+- [x] `cred_by_id` — data.go — GetCredByID
+- [x] `creds_get_by_hash_type` — data.go — GetCredsByHashType
+- [x] `creds_sniff_hash_type` — data.go — CredsSniffHashType
+- [x] `hosts_list` — data.go — Hosts
+- [x] `host_info` — data.go — Host
+- [x] `host_rm` — data.go — HostRm
+- [x] `host_ioc_rm` — data.go — HostIOCRm
 - [x] `restart_jobs` — listeners.go — RestartJobs
 - [x] `start_tcp_stager` — listeners.go — StartTCPStagerListener
 
-## Tier 5 — Networking and Pivots (13 new → 98 total)
+## Tier 5 — Networking and Pivots (13 new → 99 total)
 - [x] `pivot_start_listener` — pivots.go — PivotStartListener
 - [x] `pivot_stop_listener` — pivots.go — PivotStopListener
 - [x] `pivot_session_listeners` — pivots.go — PivotSessionListeners
@@ -109,7 +110,7 @@ Goal: Expand built-in MCP server to ~128 tools, accessible over HTTP to any mult
 - [x] `wg_list_forwarders` — portfwd.go — WGListForwarders
 - [x] `wg_list_socks_servers` — portfwd.go — WGListSocksServers
 
-## Tier 6 — Generation and Websites (16 new → 114 total)
+## Tier 6 — Generation and Websites (16 new → 115 total)
 - [x] `generate_implant` — generate.go — Generate
 - [x] `generate_stage` — generate.go — GenerateStage
 - [x] `regenerate_implant` — generate.go — Regenerate
@@ -127,7 +128,7 @@ Goal: Expand built-in MCP server to ~128 tools, accessible over HTTP to any mult
 - [x] `website_update_content` — websites.go — WebsiteUpdateContent
 - [x] `website_remove_content` — websites.go — WebsiteRemoveContent
 
-## Tier 7 — Extensions and BOF Modules (6 new → 120 total)
+## Tier 7 — Extensions and BOF Modules (6 new → 121 total)
 - [x] `call_extension` — extensions.go — CallExtension
 - [x] `list_extensions` — extensions.go — ListExtensions
 - [x] `register_extension` — extensions.go — RegisterExtension
@@ -135,7 +136,7 @@ Goal: Expand built-in MCP server to ~128 tools, accessible over HTTP to any mult
 - [x] `list_bof_modules` — extensions.go — Scan BOF_MODULES_DIR, read manifests
 - [x] `run_bof_module` — extensions.go — Resolve module, validate args, delegate to execute_bof
 
-## Tier 8 — Advanced (8 new → 128 total)
+## Tier 8 — Advanced (8 new → 129 total)
 - [x] `generate_packed_implant` — integrations.go — Generate + zergling subprocess
 - [x] `create_socks` — portfwd.go — CreateSocks
 - [x] `close_socks` — portfwd.go — CloseSocks
