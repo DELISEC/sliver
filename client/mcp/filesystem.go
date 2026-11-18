@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"unicode/utf8"
 
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
@@ -327,7 +328,7 @@ func (s *SliverMCPServer) handleLs(ctx context.Context, args lsArgs) (*mcpapi.Ca
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -398,7 +399,7 @@ func (s *SliverMCPServer) handleCd(ctx context.Context, args cdArgs) (*mcpapi.Ca
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -452,7 +453,7 @@ func (s *SliverMCPServer) handleCat(ctx context.Context, args catArgs) (*mcpapi.
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -507,7 +508,7 @@ func (s *SliverMCPServer) handlePwd(ctx context.Context, args pwdArgs) (*mcpapi.
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -558,7 +559,7 @@ func (s *SliverMCPServer) handleRm(ctx context.Context, args rmArgs) (*mcpapi.Ca
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -617,7 +618,7 @@ func (s *SliverMCPServer) handleMv(ctx context.Context, args mvArgs) (*mcpapi.Ca
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -679,7 +680,7 @@ func (s *SliverMCPServer) handleCp(ctx context.Context, args cpArgs) (*mcpapi.Ca
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -739,7 +740,7 @@ func (s *SliverMCPServer) handleMkdir(ctx context.Context, args mkdirArgs) (*mcp
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -797,7 +798,7 @@ func (s *SliverMCPServer) handleChmod(ctx context.Context, args chmodArgs) (*mcp
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -858,7 +859,7 @@ func (s *SliverMCPServer) handleChown(ctx context.Context, args chownArgs) (*mcp
 		defer cancel()
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -949,7 +950,8 @@ type uploadFileArgs struct {
 	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
 	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
 	RemotePath     string `json:"remote_path" jsonschema:"description=Remote destination path,required"`
-	DataBase64     string `json:"data_base64" jsonschema:"description=File content as base64,required"`
+	DataBase64     string `json:"data_base64" jsonschema:"description=File content as base64 (use this OR local_path)"`
+	LocalPath      string `json:"local_path" jsonschema:"description=Path to local file to upload (use this OR data_base64)"`
 	IsIOC          bool   `json:"is_ioc" jsonschema:"description=Mark as IOC"`
 	Overwrite      bool   `json:"overwrite" jsonschema:"description=Overwrite existing file"`
 	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
@@ -984,7 +986,7 @@ func (s *SliverMCPServer) downloadFileHandler(ctx context.Context, request mcpap
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1056,12 +1058,24 @@ func (s *SliverMCPServer) uploadFileHandler(ctx context.Context, request mcpapi.
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	data, err := base64.StdEncoding.DecodeString(args.DataBase64)
-	if err != nil {
-		return mcpapi.NewToolResultError("invalid base64 data: " + err.Error()), nil
+	var data []byte
+	if args.LocalPath != "" {
+		var err error
+		data, err = os.ReadFile(args.LocalPath)
+		if err != nil {
+			return mcpapi.NewToolResultErrorFromErr("failed to read local file", err), nil
+		}
+	} else if args.DataBase64 != "" {
+		var err error
+		data, err = base64.StdEncoding.DecodeString(args.DataBase64)
+		if err != nil {
+			return mcpapi.NewToolResultError("invalid base64 data: " + err.Error()), nil
+		}
+	} else {
+		return mcpapi.NewToolResultError("either local_path or data_base64 is required"), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1146,7 +1160,7 @@ func (s *SliverMCPServer) grepHandler(ctx context.Context, request mcpapi.CallTo
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1238,7 +1252,7 @@ func (s *SliverMCPServer) chtimesHandler(ctx context.Context, request mcpapi.Cal
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1310,7 +1324,7 @@ func (s *SliverMCPServer) mountHandler(ctx context.Context, request mcpapi.CallT
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1400,7 +1414,7 @@ func (s *SliverMCPServer) memfilesListHandler(ctx context.Context, request mcpap
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1459,7 +1473,7 @@ func (s *SliverMCPServer) memfilesAddHandler(ctx context.Context, request mcpapi
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -1500,7 +1514,7 @@ func (s *SliverMCPServer) memfilesRmHandler(ctx context.Context, request mcpapi.
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}

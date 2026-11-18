@@ -104,7 +104,7 @@ func (s *SliverMCPServer) listServicesHandler(ctx context.Context, request mcpap
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -170,7 +170,7 @@ func (s *SliverMCPServer) serviceDetailHandler(ctx context.Context, request mcpa
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -228,7 +228,7 @@ func (s *SliverMCPServer) startServiceByNameHandler(ctx context.Context, request
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -277,7 +277,7 @@ func (s *SliverMCPServer) startServiceHandler(ctx context.Context, request mcpap
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -327,7 +327,7 @@ func (s *SliverMCPServer) stopServiceHandler(ctx context.Context, request mcpapi
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}
@@ -376,7 +376,7 @@ func (s *SliverMCPServer) removeServiceHandler(ctx context.Context, request mcpa
 		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
 	}
 
-	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
 	}

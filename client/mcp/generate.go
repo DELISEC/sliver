@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
@@ -50,6 +52,7 @@ type generateImplantArgs struct {
 	LimitHostname       string   `json:"limit_hostname" jsonschema:"description=Only execute on matching hostname"`
 	LimitUsername       string   `json:"limit_username" jsonschema:"description=Only execute as matching username"`
 	LimitFileExists     string   `json:"limit_file_exists" jsonschema:"description=Only execute if file exists"`
+	OutputDir           string   `json:"output_dir" jsonschema:"description=Directory to save output file (default /tmp)"`
 }
 
 type regenerateImplantArgs struct {
@@ -109,7 +112,7 @@ type generateResult struct {
 	FileName    string `json:"file_name"`
 	ImplantName string `json:"implant_name"`
 	Size        int    `json:"size"`
-	Data        string `json:"data"`
+	OutputPath  string `json:"output_path"`
 }
 
 type implantBuildItem struct {
@@ -209,6 +212,7 @@ func buildImplantConfig(os, arch string, isBeacon bool, beaconInterval, beaconJi
 		LimitHostname:       limitHostname,
 		LimitUsername:       limitUsername,
 		LimitFileExists:     limitFileExists,
+		HTTPC2ConfigName:    "default",
 	}
 	return cfg
 }
@@ -247,7 +251,16 @@ func (s *SliverMCPServer) generateImplantHandler(ctx context.Context, request mc
 	if resp.File != nil {
 		result.FileName = resp.File.Name
 		result.Size = len(resp.File.Data)
-		result.Data = base64.StdEncoding.EncodeToString(resp.File.Data)
+
+		outDir := args.OutputDir
+		if outDir == "" {
+			outDir = os.TempDir()
+		}
+		outPath := filepath.Join(outDir, resp.File.Name)
+		if err := os.WriteFile(outPath, resp.File.Data, 0o600); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("failed to write output file", err), nil
+		}
+		result.OutputPath = outPath
 	}
 
 	return mcpapi.NewToolResultStructuredOnly(result), nil
@@ -275,7 +288,12 @@ func (s *SliverMCPServer) regenerateImplantHandler(ctx context.Context, request 
 	if resp.File != nil {
 		result.FileName = resp.File.Name
 		result.Size = len(resp.File.Data)
-		result.Data = base64.StdEncoding.EncodeToString(resp.File.Data)
+
+		outPath := filepath.Join(os.TempDir(), resp.File.Name)
+		if err := os.WriteFile(outPath, resp.File.Data, 0o600); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("failed to write output file", err), nil
+		}
+		result.OutputPath = outPath
 	}
 
 	return mcpapi.NewToolResultStructuredOnly(result), nil
@@ -310,7 +328,12 @@ func (s *SliverMCPServer) generateStageHandler(ctx context.Context, request mcpa
 	if resp.File != nil {
 		result.FileName = resp.File.Name
 		result.Size = len(resp.File.Data)
-		result.Data = base64.StdEncoding.EncodeToString(resp.File.Data)
+
+		outPath := filepath.Join(os.TempDir(), resp.File.Name)
+		if err := os.WriteFile(outPath, resp.File.Data, 0o600); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("failed to write output file", err), nil
+		}
+		result.OutputPath = outPath
 	}
 
 	return mcpapi.NewToolResultStructuredOnly(result), nil

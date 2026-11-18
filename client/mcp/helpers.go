@@ -49,6 +49,43 @@ func buildRequest(sessionID, beaconID string, timeoutSeconds int64) (*commonpb.R
 	return req, true, nil
 }
 
+func (s *SliverMCPServer) buildCheckedRequest(ctx context.Context, sessionID, beaconID string, timeoutSeconds int64) (*commonpb.Request, bool, error) {
+	req, isBeacon, err := buildRequest(sessionID, beaconID, timeoutSeconds)
+	if err != nil {
+		return nil, false, err
+	}
+	if isBeacon {
+		if err := s.checkBeaconAlive(ctx, beaconID); err != nil {
+			return nil, false, err
+		}
+	}
+	return req, isBeacon, nil
+}
+
+func (s *SliverMCPServer) checkBeaconAlive(ctx context.Context, beaconID string) error {
+	beacon, err := s.Rpc.GetBeacon(ctx, &clientpb.Beacon{ID: beaconID})
+	if err != nil {
+		return fmt.Errorf("beacon %s not found: %w", beaconID, err)
+	}
+
+	lastSeen := time.Unix(beacon.LastCheckin, 0)
+	ago := time.Since(lastSeen).Truncate(time.Second)
+
+	if beacon.IsDead {
+		return fmt.Errorf("beacon %s (%s@%s) is dead — last check-in %s ago at %s. Use list_sessions_and_beacons to find a live beacon",
+			beaconID, beacon.Username, beacon.Hostname, ago, lastSeen.Format(time.RFC3339))
+	}
+
+	// Beacon is stale if it missed 3+ check-in windows (interval + jitter)
+	maxWindow := time.Duration(beacon.Interval + beacon.Jitter)
+	if maxWindow > 0 && time.Since(lastSeen) > 3*maxWindow {
+		return fmt.Errorf("beacon %s (%s@%s) appears stale — last check-in %s ago (expected every %s). The beacon may have died without the server marking it dead. Use list_sessions_and_beacons to verify or kill_beacon to clean up",
+			beaconID, beacon.Username, beacon.Hostname, ago, maxWindow.Truncate(time.Second))
+	}
+
+	return nil
+}
+
 func applyDefaultTimeout(wait bool, timeoutSeconds int64) int64 {
 	if wait && timeoutSeconds <= 0 {
 		return defaultWaitTimeoutSeconds

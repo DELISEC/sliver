@@ -19,9 +19,12 @@ package cli
 */
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/bishopfox/sliver/client/assets"
@@ -35,11 +38,19 @@ import (
 func mcpCmd(con *console.SliverClient) *cobra.Command {
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
-		Short: "Start the MCP stdio server",
+		Short: "Start the MCP server (stdio or HTTP)",
+		Long: `Start a Model Context Protocol server that exposes Sliver tools to AI agents.
+
+By default starts in stdio mode (for Claude Code stdio transport).
+Use --transport http to start an HTTP server (for multiplayer / remote agents).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMCP(cmd, con)
 		},
 	}
+	mcpCmd.Flags().String("transport", "stdio", "Transport mode: stdio, http, or sse")
+	mcpCmd.Flags().String("listen", "127.0.0.1:8080", "Listen address for HTTP/SSE transport")
+	mcpCmd.Flags().String("zergling-path", "", "Path to zergling packer binary (enables generate_packed_implant)")
+	mcpCmd.Flags().String("bof-modules-dir", "", "Directory containing BOF modules")
 	return mcpCmd
 }
 
@@ -71,15 +82,60 @@ func runMCP(cmd *cobra.Command, con *console.SliverClient) error {
 	defer transport.CloseGRPCConnection(ln)
 
 	con.Rpc = rpc
-	// Do not install the connection-lost watchdog here: gRPC channels idle
-	// out after 30 minutes without RPCs (grpc-go default) and transparently
-	// reconnect on the next call. Exiting on the Idle state would kill an
-	// otherwise healthy MCP bridge between tool calls.
 
-	cfg := clientmcp.DefaultConfig()
-	if err := clientmcp.ServeStdio(cfg, con.Rpc); err != nil {
-		fmt.Printf("MCP server error: %s\n", err)
+	zerglingPath, _ := cmd.Flags().GetString("zergling-path")
+	bofModulesDir, _ := cmd.Flags().GetString("bof-modules-dir")
+
+	rawTransport, _ := cmd.Flags().GetString("transport")
+	if rawTransport == "stdio" || rawTransport == "" {
+		cfg := clientmcp.DefaultConfig()
+		cfg.ZerglingPath = zerglingPath
+		cfg.BOFModulesDir = bofModulesDir
+		if err := clientmcp.ServeStdio(cfg, con.Rpc); err != nil {
+			fmt.Printf("MCP server error: %s\n", err)
+			return nil
+		}
 		return nil
+	}
+
+	mcpTransport, err := clientmcp.ParseTransport(rawTransport)
+	if err != nil {
+		fmt.Printf("Invalid transport: %s\n", err)
+		return nil
+	}
+
+	listen, _ := cmd.Flags().GetString("listen")
+	cfg := clientmcp.Config{
+		Transport:     mcpTransport,
+		ListenAddress: listen,
+		ZerglingPath:  zerglingPath,
+		BOFModulesDir: bofModulesDir,
+	}.WithDefaults()
+
+	if err := clientmcp.Start(cfg, con.Rpc); err != nil {
+		fmt.Printf("MCP server start failed: %s\n", err)
+		return nil
+	}
+
+	status := clientmcp.GetStatus()
+	endpoint, _ := cfg.EndpointURL()
+	fmt.Printf("MCP server running (%s) on %s\n", cfg.Transport, cfg.ListenAddress)
+	fmt.Printf("Endpoint: %s\n", endpoint)
+	if status.AuthToken != "" {
+		fmt.Printf("Auth header: %s\n", status.AuthHeader)
+		fmt.Printf("Auth token: %s\n", status.AuthToken)
+	}
+	fmt.Printf("Press Ctrl+C to stop\n")
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	fmt.Printf("\nShutting down...\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := clientmcp.Stop(ctx); err != nil {
+		fmt.Printf("Shutdown error: %s\n", err)
 	}
 	return nil
 }
