@@ -1,33 +1,74 @@
-# Sliver
+# Sliver (delifer)
 
-Sliver is an open-source, cross-platform adversary emulation and red team framework designed for organizations of all sizes to perform authorized security testing.
+Custom distribution of [BishopFox/sliver](https://github.com/BishopFox/sliver) with **MCP integration** for AI-driven red team operations.
 
-Sliver implants support command-and-control (C2) over Mutual TLS (mTLS), WireGuard, HTTP(S), and DNS. Implants are dynamically compiled with unique per-binary asymmetric encryption keys and support a wide range of post-exploitation capabilities across macOS, Windows, and Linux.
+> **131+ tools** exposed via Model Context Protocol — run Sliver from Claude Code, Codex, or any MCP client.
 
-Sliver includes support for native and shellcode payloads, userspace reflective loading, built-in shellcode encoding, and BOF/COFF execution on both amd64 and arm64 architectures for macOS, Windows, and Linux.
+[![Release](https://img.shields.io/github/v/release/SolaSec/sliver?label=release&style=flat-square)](https://github.com/SolaSec/sliver/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
 
-The Sliver server and client run on macOS, Windows, and Linux. Implants officially support those same platforms and may also run on additional targets supported by the Go compiler, although those configurations are not regularly tested.
+---
 
-[![Release](https://github.com/BishopFox/sliver/actions/workflows/autorelease.yml/badge.svg)](https://github.com/BishopFox/sliver/actions/workflows/autorelease.yml) [![golangci-lint](https://github.com/BishopFox/sliver/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/BishopFox/sliver/actions/workflows/golangci-lint.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+## Stack
 
-Visit [https://sliver.sh/](https://sliver.sh/) for tutorials and documentation.
+| Component | Description | Repo |
+|-----------|-------------|------|
+| **Sliver** | C2 framework with full MCP tool coverage | [SolaSec/sliver](https://github.com/SolaSec/sliver) · [DELISEC/sliver](https://github.com/DELISEC/sliver) |
+| **Zergling** | Rust shellcode packer — syscall-indirect, ETW/AMSI patch, sleep mask, multiple injection methods | [SolaSec/zergling](https://github.com/SolaSec/zergling) · [DELISEC/zergling](https://github.com/DELISEC/zergling) |
+| **Overlord** | BOF toolkit — 50+ modules across recon, privesc, lateral movement, evasion, persistence, AD | [SolaSec/overlord](https://github.com/SolaSec/overlord) · [DELISEC/overlord](https://github.com/DELISEC/overlord) |
 
-### Getting Started
+## What's Different
 
-Download the latest [release](https://github.com/BishopFox/sliver/releases) and see the Sliver [wiki](https://sliver.sh/docs?name=Getting+Started) for a quick tutorial on basic setup and usage. To get the very latest and greatest compile from source.
+- **MCP server built into the client** — `sliver-client mcp` starts a stdio or HTTP MCP server with 131+ tools covering sessions, beacons, implant generation, file ops, network, registry, pivots, loot, credentials, extensions, BOFs, and more
+- **Zergling integration** — generate packed implants via `generate_zergling_implant` with manifest-driven builds
+- **Overlord suite runner** — run BOF recon/privesc/lateral suites via `run_overlord_suite`
+- **BOF output fix** — WantBOFOutputs/Output field mismatch that silently dropped BeaconPrintf output
+- **Beacon staleness checks** — MCP tools reject tasking beacons that missed 3x their check-in window
+- **File path support** — MCP tools accept local paths instead of requiring base64
+- **Linux ARM** — 32-bit ARM compiler target
 
-#### Linux One Liner
+## Quick Start
 
-`curl https://sliver.sh/install|sudo bash` and then run `sliver`
+Download binaries from the [latest release](https://github.com/SolaSec/sliver/releases), or build from source:
 
-### Help!
+```sh
+git clone https://github.com/SolaSec/sliver.git
+cd sliver && git checkout delifer
+make          # server + client
+make client   # client only (CGO-free)
+```
 
-Please checkout the [wiki](https://sliver.sh/), or start a [GitHub discussion](https://github.com/BishopFox/sliver/discussions).
+Point your MCP client at the sliver-client binary:
 
-### Compile From Source
+```json
+{
+  "mcpServers": {
+    "sliver": {
+      "command": "./sliver-client",
+      "args": [
+        "mcp",
+        "--config", "operator.cfg",
+        "--zergling-path", "../zergling/target/release/launcher",
+        "--overlord-dir", "../overlord"
+      ]
+    }
+  }
+}
+```
 
-See the [wiki](https://sliver.sh/docs?name=Compile+from+Source).
+See [**README.delifer.md**](README.delifer.md) for full setup — server config, zergling/overlord builds, prerequisites, and platform notes.
 
-### License - GPLv3
+## Branching
 
-Sliver is licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html), some sub-components may have separate licenses. See their respective subdirectories in this project for details.
+| Branch | Purpose |
+|--------|---------|
+| `delifer` (default) | Integration branch — all custom features merged |
+| `master` | Tracks upstream [BishopFox/sliver](https://github.com/BishopFox/sliver) |
+| `feature/*`, `fix/*` | Individual changes, kept alive for potential upstream PRs |
+
+## Upstream
+
+For general Sliver documentation, see [sliver.sh](https://sliver.sh/) and the upstream [wiki](https://github.com/BishopFox/sliver/wiki).
+
+## License
+
+GPLv3 — same as upstream. See [LICENSE](https://www.gnu.org/licenses/gpl-3.0.en.html).
