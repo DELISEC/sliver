@@ -598,6 +598,106 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	srv.server.AddTool(stopServiceTool, srv.stopServiceHandler)
 	srv.server.AddTool(removeServiceTool, srv.removeServiceHandler)
 
+	// ===== Tier 4: Data Management =====
+
+	// Tier 4: Loot
+	lootAddTool := mcpapi.NewTool(lootAddToolName,
+		mcpapi.WithDescription("Add a loot entry (file/data captured from a target)."),
+		mcpapi.WithInputSchema[lootAddArgs](),
+	)
+	lootRmTool := mcpapi.NewTool(lootRmToolName,
+		mcpapi.WithDescription("Remove a loot entry."),
+		mcpapi.WithInputSchema[lootRmArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	lootUpdateTool := mcpapi.NewTool(lootUpdateToolName,
+		mcpapi.WithDescription("Update a loot entry's metadata."),
+		mcpapi.WithInputSchema[lootUpdateArgs](),
+	)
+	lootContentTool := mcpapi.NewTool(lootContentToolName,
+		mcpapi.WithDescription("Get the content/data of a loot entry (returns base64)."),
+		mcpapi.WithInputSchema[lootContentArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	lootAllTool := mcpapi.NewTool(lootAllToolName,
+		mcpapi.WithDescription("List all loot entries."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	srv.server.AddTool(lootAddTool, srv.lootAddHandler)
+	srv.server.AddTool(lootRmTool, srv.lootRmHandler)
+	srv.server.AddTool(lootUpdateTool, srv.lootUpdateHandler)
+	srv.server.AddTool(lootContentTool, srv.lootContentHandler)
+	srv.server.AddTool(lootAllTool, srv.lootAllHandler)
+
+	// Tier 4: Credentials
+	credsListTool := mcpapi.NewTool(credsListToolName,
+		mcpapi.WithDescription("List all stored credentials."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	credsAddTool := mcpapi.NewTool(credsAddToolName,
+		mcpapi.WithDescription("Add a credential to the credential store."),
+		mcpapi.WithInputSchema[credsAddArgs](),
+	)
+	credsRmTool := mcpapi.NewTool(credsRmToolName,
+		mcpapi.WithDescription("Remove a credential from the store."),
+		mcpapi.WithInputSchema[credsRmArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	credsUpdateTool := mcpapi.NewTool(credsUpdateToolName,
+		mcpapi.WithDescription("Update a credential in the store."),
+		mcpapi.WithInputSchema[credsUpdateArgs](),
+	)
+	credByIDTool := mcpapi.NewTool(credByIDToolName,
+		mcpapi.WithDescription("Get a specific credential by ID."),
+		mcpapi.WithInputSchema[credByIDArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	credsByHashTypeTool := mcpapi.NewTool(credsByHashTypeToolName,
+		mcpapi.WithDescription("Get credentials filtered by hash type."),
+		mcpapi.WithInputSchema[credsByHashTypeArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	credsSniffHashTypeTool := mcpapi.NewTool(credsSniffHashTypeToolName,
+		mcpapi.WithDescription("Identify the hash type of a given hash string."),
+		mcpapi.WithInputSchema[credsSniffHashTypeArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	srv.server.AddTool(credsListTool, srv.credsListHandler)
+	srv.server.AddTool(credsAddTool, srv.credsAddHandler)
+	srv.server.AddTool(credsRmTool, srv.credsRmHandler)
+	srv.server.AddTool(credsUpdateTool, srv.credsUpdateHandler)
+	srv.server.AddTool(credByIDTool, srv.credByIDHandler)
+	srv.server.AddTool(credsByHashTypeTool, srv.credsByHashTypeHandler)
+	srv.server.AddTool(credsSniffHashTypeTool, srv.credsSniffHashTypeHandler)
+
+	// Tier 4: Hosts
+	hostsListTool := mcpapi.NewTool(hostsListToolName,
+		mcpapi.WithDescription("List all known hosts."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	hostInfoTool := mcpapi.NewTool(hostInfoToolName,
+		mcpapi.WithDescription("Get detailed info about a specific host."),
+		mcpapi.WithInputSchema[hostInfoArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	hostRmTool := mcpapi.NewTool(hostRmToolName,
+		mcpapi.WithDescription("Remove a host record from the server."),
+		mcpapi.WithInputSchema[hostRmArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	hostIOCRmTool := mcpapi.NewTool(hostIOCRmToolName,
+		mcpapi.WithDescription("Remove an IOC record from a host."),
+		mcpapi.WithInputSchema[hostIOCRmArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(hostsListTool, srv.hostsListHandler)
+	srv.server.AddTool(hostInfoTool, srv.hostInfoHandler)
+	srv.server.AddTool(hostRmTool, srv.hostRmHandler)
+	srv.server.AddTool(hostIOCRmTool, srv.hostIOCRmHandler)
+
 	return srv
 }
 
