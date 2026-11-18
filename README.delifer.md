@@ -62,15 +62,20 @@ rustup target add x86_64-pc-windows-gnu --toolchain nightly
 ### 1. Clone the repos
 
 ```sh
+# Pick your mirror — both are identical:
+#   DELISEC: https://github.com/DELISEC
+#   SolaSec: https://github.com/SolaSec
+ORG=SolaSec
+
 # Sliver (this repo)
-git clone https://github.com/DELISEC/sliver.git
+git clone https://github.com/$ORG/sliver.git
 cd sliver && git checkout delifer
 
 # Zergling (shellcode packer)
-git clone https://github.com/DELISEC/zergling.git
+git clone https://github.com/$ORG/zergling.git
 
 # Overlord (BOF suites)
-git clone https://github.com/DELISEC/overlord.git
+git clone https://github.com/$ORG/overlord.git
 ```
 
 ### 2. Build Sliver
