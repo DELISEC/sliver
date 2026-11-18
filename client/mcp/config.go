@@ -23,6 +23,8 @@ type Config struct {
 	ListenAddress string
 	ServerName    string
 	ServerVersion string
+	BOFModulesDir string
+	ZerglingPath  string
 }
 
 // DefaultConfig returns the baseline MCP configuration.

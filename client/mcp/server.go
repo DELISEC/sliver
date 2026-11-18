@@ -60,9 +60,11 @@ type listSessionsAndBeaconsResult struct {
 
 // SliverMCPServer wraps the MCP server with Sliver RPC access for handlers.
 type SliverMCPServer struct {
-	Rpc    rpcpb.SliverRPCClient
-	server *mcpserver.MCPServer
-	logger *log.Logger
+	Rpc           rpcpb.SliverRPCClient
+	server        *mcpserver.MCPServer
+	logger        *log.Logger
+	BOFModulesDir string
+	ZerglingPath  string
 }
 
 func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *SliverMCPServer {
@@ -314,9 +316,11 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	)
 
 	srv := &SliverMCPServer{
-		Rpc:    rpc,
-		server: base,
-		logger: logger,
+		Rpc:           rpc,
+		server:        base,
+		logger:        logger,
+		BOFModulesDir: cfg.BOFModulesDir,
+		ZerglingPath:  cfg.ZerglingPath,
 	}
 
 	// Tier 0: Existing tools
@@ -697,6 +701,286 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	srv.server.AddTool(hostInfoTool, srv.hostInfoHandler)
 	srv.server.AddTool(hostRmTool, srv.hostRmHandler)
 	srv.server.AddTool(hostIOCRmTool, srv.hostIOCRmHandler)
+
+	// Tier 4: Listener additions
+	restartJobsTool := mcpapi.NewTool(restartJobsToolName,
+		mcpapi.WithDescription("Restart one or more jobs by their IDs."),
+		mcpapi.WithInputSchema[restartJobsArgs](),
+	)
+	startTCPStagerTool := mcpapi.NewTool(startTCPStagerToolName,
+		mcpapi.WithDescription("Start a TCP stager listener."),
+		mcpapi.WithInputSchema[startTCPStagerArgs](),
+	)
+	srv.server.AddTool(restartJobsTool, srv.restartJobsHandler)
+	srv.server.AddTool(startTCPStagerTool, srv.startTCPStagerHandler)
+
+	// ===== Tier 5: Networking & Pivots =====
+
+	// Tier 5: Pivots
+	pivotStartListenerTool := mcpapi.NewTool(pivotStartListenerToolName,
+		mcpapi.WithDescription("Start a pivot listener on the implant (TCP/UDP/NamedPipe)."),
+		mcpapi.WithInputSchema[pivotStartListenerArgs](),
+	)
+	pivotStopListenerTool := mcpapi.NewTool(pivotStopListenerToolName,
+		mcpapi.WithDescription("Stop a pivot listener."),
+		mcpapi.WithInputSchema[pivotStopListenerArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	pivotSessionListenersTool := mcpapi.NewTool(pivotSessionListenersToolName,
+		mcpapi.WithDescription("List pivot listeners on a session."),
+		mcpapi.WithInputSchema[pivotSessionListenersArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	pivotGraphTool := mcpapi.NewTool(pivotGraphToolName,
+		mcpapi.WithDescription("Get the pivot graph showing all pivot connections."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	srv.server.AddTool(pivotStartListenerTool, srv.pivotStartListenerHandler)
+	srv.server.AddTool(pivotStopListenerTool, srv.pivotStopListenerHandler)
+	srv.server.AddTool(pivotSessionListenersTool, srv.pivotSessionListenersHandler)
+	srv.server.AddTool(pivotGraphTool, srv.pivotGraphHandler)
+
+	// Tier 5: WireGuard networking
+	wgStartPortForwardTool := mcpapi.NewTool(wgStartPortForwardToolName,
+		mcpapi.WithDescription("Start a WireGuard TCP port forward on the implant."),
+		mcpapi.WithInputSchema[wgStartPortForwardArgs](),
+	)
+	wgStopPortForwardTool := mcpapi.NewTool(wgStopPortForwardToolName,
+		mcpapi.WithDescription("Stop a WireGuard port forward."),
+		mcpapi.WithInputSchema[wgStopPortForwardArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	wgStartSocksTool := mcpapi.NewTool(wgStartSocksToolName,
+		mcpapi.WithDescription("Start a WireGuard SOCKS proxy on the implant."),
+		mcpapi.WithInputSchema[wgStartSocksArgs](),
+	)
+	wgStopSocksTool := mcpapi.NewTool(wgStopSocksToolName,
+		mcpapi.WithDescription("Stop a WireGuard SOCKS proxy."),
+		mcpapi.WithInputSchema[wgStopSocksArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	wgListForwardersTool := mcpapi.NewTool(wgListForwardersToolName,
+		mcpapi.WithDescription("List active WireGuard TCP forwarders."),
+		mcpapi.WithInputSchema[wgListForwardersArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	wgListSocksServersTool := mcpapi.NewTool(wgListSocksServersToolName,
+		mcpapi.WithDescription("List active WireGuard SOCKS servers."),
+		mcpapi.WithInputSchema[wgListSocksServersArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	srv.server.AddTool(wgStartPortForwardTool, srv.wgStartPortForwardHandler)
+	srv.server.AddTool(wgStopPortForwardTool, srv.wgStopPortForwardHandler)
+	srv.server.AddTool(wgStartSocksTool, srv.wgStartSocksHandler)
+	srv.server.AddTool(wgStopSocksTool, srv.wgStopSocksHandler)
+	srv.server.AddTool(wgListForwardersTool, srv.wgListForwardersHandler)
+	srv.server.AddTool(wgListSocksServersTool, srv.wgListSocksServersHandler)
+
+	// Tier 5: Reverse Port Forwarding
+	startRportFwdTool := mcpapi.NewTool(startRportFwdToolName,
+		mcpapi.WithDescription("Start a reverse port forward listener on the implant."),
+		mcpapi.WithInputSchema[startRportFwdArgs](),
+	)
+	listRportFwdTool := mcpapi.NewTool(listRportFwdToolName,
+		mcpapi.WithDescription("List active reverse port forward listeners."),
+		mcpapi.WithInputSchema[listRportFwdArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	stopRportFwdTool := mcpapi.NewTool(stopRportFwdToolName,
+		mcpapi.WithDescription("Stop a reverse port forward listener."),
+		mcpapi.WithInputSchema[stopRportFwdArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(startRportFwdTool, srv.startRportFwdHandler)
+	srv.server.AddTool(listRportFwdTool, srv.listRportFwdHandler)
+	srv.server.AddTool(stopRportFwdTool, srv.stopRportFwdHandler)
+
+	// Tier 5: SOCKS proxy (unary, session-level)
+	createSocksTool := mcpapi.NewTool(createSocksToolName,
+		mcpapi.WithDescription("Create a SOCKS5 proxy through a session."),
+		mcpapi.WithInputSchema[createSocksArgs](),
+	)
+	closeSocksTool := mcpapi.NewTool(closeSocksToolName,
+		mcpapi.WithDescription("Close a SOCKS5 proxy."),
+		mcpapi.WithInputSchema[closeSocksArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(createSocksTool, srv.createSocksHandler)
+	srv.server.AddTool(closeSocksTool, srv.closeSocksHandler)
+
+	// ===== Tier 6: Generation & Websites =====
+
+	// Tier 6: Implant generation
+	generateImplantTool := mcpapi.NewTool(generateImplantToolName,
+		mcpapi.WithDescription("Generate a new Sliver implant. Returns the implant file as base64."),
+		mcpapi.WithInputSchema[generateImplantArgs](),
+	)
+	regenerateImplantTool := mcpapi.NewTool(regenerateImplantToolName,
+		mcpapi.WithDescription("Regenerate an implant by its name."),
+		mcpapi.WithInputSchema[regenerateImplantArgs](),
+	)
+	generateStageTool := mcpapi.NewTool(generateStageToolName,
+		mcpapi.WithDescription("Generate a stage (shellcode) for an implant profile."),
+		mcpapi.WithInputSchema[generateStageArgs](),
+	)
+	listImplantBuildsTool := mcpapi.NewTool(listImplantBuildsToolName,
+		mcpapi.WithDescription("List all implant builds."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	deleteImplantBuildTool := mcpapi.NewTool(deleteImplantBuildToolName,
+		mcpapi.WithDescription("Delete an implant build by name."),
+		mcpapi.WithInputSchema[deleteImplantBuildArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	listImplantProfilesTool := mcpapi.NewTool(listImplantProfilesToolName,
+		mcpapi.WithDescription("List all implant profiles."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	saveImplantProfileTool := mcpapi.NewTool(saveImplantProfileToolName,
+		mcpapi.WithDescription("Save a new implant profile."),
+		mcpapi.WithInputSchema[saveImplantProfileArgs](),
+	)
+	deleteImplantProfileTool := mcpapi.NewTool(deleteImplantProfileToolName,
+		mcpapi.WithDescription("Delete an implant profile by name."),
+		mcpapi.WithInputSchema[deleteImplantProfileArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	getCompilerTool := mcpapi.NewTool(getCompilerToolName,
+		mcpapi.WithDescription("Get compiler information (cross-compilers, supported targets)."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	listCanariesTool := mcpapi.NewTool(listCanariesToolName,
+		mcpapi.WithDescription("List DNS canaries."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	srv.server.AddTool(generateImplantTool, srv.generateImplantHandler)
+	srv.server.AddTool(regenerateImplantTool, srv.regenerateImplantHandler)
+	srv.server.AddTool(generateStageTool, srv.generateStageHandler)
+	srv.server.AddTool(listImplantBuildsTool, srv.listImplantBuildsHandler)
+	srv.server.AddTool(deleteImplantBuildTool, srv.deleteImplantBuildHandler)
+	srv.server.AddTool(listImplantProfilesTool, srv.listImplantProfilesHandler)
+	srv.server.AddTool(saveImplantProfileTool, srv.saveImplantProfileHandler)
+	srv.server.AddTool(deleteImplantProfileTool, srv.deleteImplantProfileHandler)
+	srv.server.AddTool(getCompilerTool, srv.getCompilerHandler)
+	srv.server.AddTool(listCanariesTool, srv.listCanariesHandler)
+
+	// Tier 6: Websites
+	listWebsitesTool := mcpapi.NewTool(listWebsitesToolName,
+		mcpapi.WithDescription("List all hosted websites."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	websiteInfoTool := mcpapi.NewTool(websiteInfoToolName,
+		mcpapi.WithDescription("Get detailed info about a hosted website."),
+		mcpapi.WithInputSchema[websiteInfoArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	websiteRemoveTool := mcpapi.NewTool(websiteRemoveToolName,
+		mcpapi.WithDescription("Remove a hosted website."),
+		mcpapi.WithInputSchema[websiteRemoveArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	websiteAddContentTool := mcpapi.NewTool(websiteAddContentToolName,
+		mcpapi.WithDescription("Add content to a hosted website."),
+		mcpapi.WithInputSchema[websiteAddContentArgs](),
+	)
+	websiteUpdateContentTool := mcpapi.NewTool(websiteUpdateContentToolName,
+		mcpapi.WithDescription("Update content on a hosted website."),
+		mcpapi.WithInputSchema[websiteUpdateContentArgs](),
+	)
+	websiteRemoveContentTool := mcpapi.NewTool(websiteRemoveContentToolName,
+		mcpapi.WithDescription("Remove content from a hosted website."),
+		mcpapi.WithInputSchema[websiteRemoveContentArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(listWebsitesTool, srv.listWebsitesHandler)
+	srv.server.AddTool(websiteInfoTool, srv.websiteInfoHandler)
+	srv.server.AddTool(websiteRemoveTool, srv.websiteRemoveHandler)
+	srv.server.AddTool(websiteAddContentTool, srv.websiteAddContentHandler)
+	srv.server.AddTool(websiteUpdateContentTool, srv.websiteUpdateContentHandler)
+	srv.server.AddTool(websiteRemoveContentTool, srv.websiteRemoveContentHandler)
+
+	// ===== Tier 7: Extensions & BOF Modules =====
+
+	callExtensionTool := mcpapi.NewTool(callExtensionToolName,
+		mcpapi.WithDescription("Call a loaded Sliver extension."),
+		mcpapi.WithInputSchema[callExtensionArgs](),
+	)
+	listExtensionsTool := mcpapi.NewTool(listExtensionsToolName,
+		mcpapi.WithDescription("List loaded extensions on the implant."),
+		mcpapi.WithInputSchema[listExtensionsArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	registerExtensionTool := mcpapi.NewTool(registerExtensionToolName,
+		mcpapi.WithDescription("Register (upload) an extension to the implant."),
+		mcpapi.WithInputSchema[registerExtensionArgs](),
+	)
+	executeBOFTool := mcpapi.NewTool(executeBOFToolName,
+		mcpapi.WithDescription("Execute a Beacon Object File (BOF) on the implant."),
+		mcpapi.WithInputSchema[executeBOFArgs](),
+	)
+	listBOFModulesTool := mcpapi.NewTool(listBOFModulesToolName,
+		mcpapi.WithDescription("List available BOF modules from the modules directory."),
+		mcpapi.WithInputSchema[listBOFModulesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	runBOFModuleTool := mcpapi.NewTool(runBOFModuleToolName,
+		mcpapi.WithDescription("Run a BOF module by path (e.g. recon/whoami). Validates args against manifest."),
+		mcpapi.WithInputSchema[runBOFModuleArgs](),
+	)
+	srv.server.AddTool(callExtensionTool, srv.callExtensionHandler)
+	srv.server.AddTool(listExtensionsTool, srv.listExtensionsHandler)
+	srv.server.AddTool(registerExtensionTool, srv.registerExtensionHandler)
+	srv.server.AddTool(executeBOFTool, srv.executeBOFHandler)
+	srv.server.AddTool(listBOFModulesTool, srv.listBOFModulesHandler)
+	srv.server.AddTool(runBOFModuleTool, srv.runBOFModuleHandler)
+
+	// ===== Tier 8: Advanced =====
+
+	// Tier 8: Shellcode tools
+	shellcodeRDITool := mcpapi.NewTool(shellcodeRDIToolName,
+		mcpapi.WithDescription("Convert a DLL to position-independent shellcode (sRDI)."),
+		mcpapi.WithInputSchema[shellcodeRDIArgs](),
+	)
+	shellcodeEncodeTool := mcpapi.NewTool(shellcodeEncodeToolName,
+		mcpapi.WithDescription("Encode shellcode with a specified encoder."),
+		mcpapi.WithInputSchema[shellcodeEncodeArgs](),
+	)
+	listShellcodeEncodersTool := mcpapi.NewTool(listShellcodeEncodersToolName,
+		mcpapi.WithDescription("List available shellcode encoders."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	srv.server.AddTool(shellcodeRDITool, srv.shellcodeRDIHandler)
+	srv.server.AddTool(shellcodeEncodeTool, srv.shellcodeEncodeHandler)
+	srv.server.AddTool(listShellcodeEncodersTool, srv.listShellcodeEncodersHandler)
+
+	// Tier 8: Execution additions
+	backdoorTool := mcpapi.NewTool(backdoorToolName,
+		mcpapi.WithDescription("Backdoor a binary on the target with a Sliver shellcode payload."),
+		mcpapi.WithInputSchema[backdoorArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	hijackDllTool := mcpapi.NewTool(hijackDllToolName,
+		mcpapi.WithDescription("Hijack a DLL on the target for persistence."),
+		mcpapi.WithInputSchema[hijackDllArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(backdoorTool, srv.backdoorHandler)
+	srv.server.AddTool(hijackDllTool, srv.hijackDllHandler)
+
+	// Tier 8: Zergling integration
+	generatePackedImplantTool := mcpapi.NewTool(generatePackedImplantToolName,
+		mcpapi.WithDescription("Generate an implant and pack it with zergling (Rust shellcode packer)."),
+		mcpapi.WithInputSchema[generatePackedImplantArgs](),
+	)
+	srv.server.AddTool(generatePackedImplantTool, srv.generatePackedImplantHandler)
 
 	return srv
 }

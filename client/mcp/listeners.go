@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
@@ -17,6 +18,8 @@ const (
 	startDNSToolName          = "start_dns_listener"
 	startWGToolName           = "start_wg_listener"
 	killJobToolName           = "kill_job"
+	restartJobsToolName       = "restart_jobs"
+	startTCPStagerToolName    = "start_tcp_stager"
 )
 
 // --- Args structs ---
@@ -291,4 +294,78 @@ func (s *SliverMCPServer) killJobHandler(ctx context.Context, request mcpapi.Cal
 		JobID:   resp.ID,
 		Success: resp.Success,
 	}), nil
+}
+
+// --- Tier 4: Restart Jobs ---
+
+type restartJobsArgs struct {
+	JobIDs []uint32 `json:"job_ids" jsonschema:"description=Job IDs to restart,required"`
+}
+
+func (s *SliverMCPServer) restartJobsHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args restartJobsArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+	s.logToolCall(restartJobsToolName, "", "")
+
+	if _, err := s.Rpc.RestartJobs(ctx, &clientpb.RestartJobReq{
+		JobIDs: args.JobIDs,
+	}); err != nil {
+		return mcpapi.NewToolResultErrorFromErr("restart_jobs failed", err), nil
+	}
+
+	type restartResult struct {
+		Success bool `json:"success"`
+	}
+	return mcpapi.NewToolResultStructuredOnly(restartResult{Success: true}), nil
+}
+
+// --- Tier 4: TCP Stager ---
+
+type startTCPStagerArgs struct {
+	Host        string `json:"host" jsonschema:"description=Bind host"`
+	Port        uint32 `json:"port" jsonschema:"description=Bind port,required"`
+	ProfileName string `json:"profile_name" jsonschema:"description=Implant profile to stage,required"`
+	Data        string `json:"data" jsonschema:"description=Base64-encoded stage data"`
+}
+
+func (s *SliverMCPServer) startTCPStagerHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args startTCPStagerArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+	s.logToolCall(startTCPStagerToolName, "", "")
+
+	stagerReq := &clientpb.StagerListenerReq{
+		Protocol:    clientpb.StageProtocol_TCP,
+		Host:        args.Host,
+		Port:        args.Port,
+		ProfileName: args.ProfileName,
+	}
+	if args.Data != "" {
+		data, err := base64.StdEncoding.DecodeString(args.Data)
+		if err != nil {
+			return mcpapi.NewToolResultError(fmt.Sprintf("invalid base64 data: %v", err)), nil
+		}
+		stagerReq.Data = data
+	}
+
+	resp, err := s.Rpc.StartTCPStagerListener(ctx, stagerReq)
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("start_tcp_stager failed", err), nil
+	}
+
+	type stagerResult struct {
+		JobID uint32 `json:"job_id"`
+	}
+	return mcpapi.NewToolResultStructuredOnly(stagerResult{JobID: resp.GetJobID()}), nil
 }
