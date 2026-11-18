@@ -20,7 +20,9 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
@@ -128,6 +130,20 @@ func (rpc *Server) GetSystem(ctx context.Context, req *clientpb.GetSystemReq) (*
 			return nil, rpcError(err)
 		}
 		shellcode, _ = os.ReadFile(shellcodePath)
+
+		// Save the implant config and build to the database so the server
+		// recognizes the new implant's key when it connects back.
+		req.Config.ID = ""
+		savedConfig, err := db.SaveImplantConfig(req.Config)
+		if err != nil {
+			return nil, rpcError(err)
+		}
+		build.ImplantConfigID = savedConfig.ID
+		build.Name = fmt.Sprintf("%s_%d", build.Name, time.Now().Unix())
+		_, err = db.SaveImplantBuild(build)
+		if err != nil {
+			return nil, rpcError(err)
+		}
 	}
 	data, err := proto.Marshal(&sliverpb.InvokeGetSystemReq{
 		Data:           shellcode,
