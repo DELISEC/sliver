@@ -152,11 +152,174 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 		mcpapi.WithReadOnlyHintAnnotation(false),
 		mcpapi.WithDestructiveHintAnnotation(true),
 	)
+	// --- Tier 1: Meta tools ---
+	serverVersionTool := mcpapi.NewTool(
+		serverVersionToolName,
+		mcpapi.WithDescription("Get the Sliver server version."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	listOperatorsTool := mcpapi.NewTool(
+		listOperatorsToolName,
+		mcpapi.WithDescription("List connected operators."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+
+	// --- Tier 1: Session/Beacon management ---
+	sessionInfoTool := mcpapi.NewTool(
+		sessionInfoToolName,
+		mcpapi.WithDescription("Get detailed info for a specific session."),
+		mcpapi.WithInputSchema[sessionInfoArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	killSessionTool := mcpapi.NewTool(
+		killSessionToolName,
+		mcpapi.WithDescription("Kill a session, terminating the implant."),
+		mcpapi.WithInputSchema[killSessionArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	beaconInfoTool := mcpapi.NewTool(
+		beaconInfoToolName,
+		mcpapi.WithDescription("Get detailed info for a specific beacon."),
+		mcpapi.WithInputSchema[beaconInfoArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	killBeaconTool := mcpapi.NewTool(
+		killBeaconToolName,
+		mcpapi.WithDescription("Remove a beacon from the server."),
+		mcpapi.WithInputSchema[killBeaconArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	listBeaconTasksTool := mcpapi.NewTool(
+		listBeaconTasksToolName,
+		mcpapi.WithDescription("List tasks for a specific beacon."),
+		mcpapi.WithInputSchema[listBeaconTasksArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	cancelBeaconTaskTool := mcpapi.NewTool(
+		cancelBeaconTaskToolName,
+		mcpapi.WithDescription("Cancel a pending beacon task."),
+		mcpapi.WithInputSchema[cancelBeaconTaskArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+
+	// --- Tier 1: Listeners ---
+	listJobsTool := mcpapi.NewTool(
+		listJobsToolName,
+		mcpapi.WithDescription("List active jobs (listeners)."),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	startMTLSTool := mcpapi.NewTool(
+		startMTLSListenerToolName,
+		mcpapi.WithDescription("Start an mTLS listener."),
+		mcpapi.WithInputSchema[startMTLSArgs](),
+	)
+	startHTTPSTool := mcpapi.NewTool(
+		startHTTPSToolName,
+		mcpapi.WithDescription("Start an HTTPS listener."),
+		mcpapi.WithInputSchema[startHTTPSArgs](),
+	)
+	startHTTPTool := mcpapi.NewTool(
+		startHTTPToolName,
+		mcpapi.WithDescription("Start an HTTP listener."),
+		mcpapi.WithInputSchema[startHTTPArgs](),
+	)
+	startDNSTool := mcpapi.NewTool(
+		startDNSToolName,
+		mcpapi.WithDescription("Start a DNS listener."),
+		mcpapi.WithInputSchema[startDNSArgs](),
+	)
+	startWGTool := mcpapi.NewTool(
+		startWGToolName,
+		mcpapi.WithDescription("Start a WireGuard listener."),
+		mcpapi.WithInputSchema[startWGArgs](),
+	)
+	killJobTool := mcpapi.NewTool(
+		killJobToolName,
+		mcpapi.WithDescription("Kill a job (stop a listener)."),
+		mcpapi.WithInputSchema[killJobArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+
+	// --- Tier 1: Execution ---
+	executeTool := mcpapi.NewTool(
+		executeToolName,
+		mcpapi.WithDescription("Execute a command on the remote target."),
+		mcpapi.WithInputSchema[executeArgs](),
+	)
+
+	// --- Tier 1: Filesystem additions ---
+	downloadFileTool := mcpapi.NewTool(
+		downloadToolName,
+		mcpapi.WithDescription("Download a file from the remote target. Returns content as base64 and text if valid UTF-8."),
+		mcpapi.WithInputSchema[downloadFileArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	uploadFileTool := mcpapi.NewTool(
+		uploadToolName,
+		mcpapi.WithDescription("Upload a file to the remote target. Data must be provided as base64."),
+		mcpapi.WithInputSchema[uploadFileArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+
+	// --- Tier 1: Processes ---
+	listProcessesTool := mcpapi.NewTool(
+		listProcessesToolName,
+		mcpapi.WithDescription("List running processes on the remote target."),
+		mcpapi.WithInputSchema[listProcessesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+
+	// --- Tier 1: Network ---
+	networkInterfacesTool := mcpapi.NewTool(
+		networkInterfacesToolName,
+		mcpapi.WithDescription("List network interfaces on the remote target."),
+		mcpapi.WithInputSchema[networkInterfacesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	networkConnectionsTool := mcpapi.NewTool(
+		networkConnectionsToolName,
+		mcpapi.WithDescription("List network connections (netstat) on the remote target."),
+		mcpapi.WithInputSchema[networkConnectionsArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+
+	// --- Tier 1: Environment ---
+	getEnvironmentTool := mcpapi.NewTool(
+		getEnvironmentToolName,
+		mcpapi.WithDescription("Get environment variables from the remote target."),
+		mcpapi.WithInputSchema[getEnvironmentArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+
+	// --- Tier 1: Registry ---
+	registryReadTool := mcpapi.NewTool(
+		registryReadToolName,
+		mcpapi.WithDescription("Read a Windows registry value."),
+		mcpapi.WithInputSchema[registryReadArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+
+	// --- Tier 1: Screenshot ---
+	screenshotTool := mcpapi.NewTool(
+		screenshotToolName,
+		mcpapi.WithDescription("Take a screenshot of the remote target's screen. Returns PNG as base64."),
+		mcpapi.WithInputSchema[screenshotArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+
 	srv := &SliverMCPServer{
 		Rpc:    rpc,
 		server: base,
 		logger: logger,
 	}
+
+	// Tier 0: Existing tools
 	srv.server.AddTool(listSessionsAndBeaconsTool, srv.listSessionsAndBeaconsHandler)
 	srv.server.AddTool(lsTool, srv.lsHandler)
 	srv.server.AddTool(cdTool, srv.cdHandler)
@@ -168,6 +331,51 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	srv.server.AddTool(mkdirTool, srv.mkdirHandler)
 	srv.server.AddTool(chmodTool, srv.chmodHandler)
 	srv.server.AddTool(chownTool, srv.chownHandler)
+
+	// Tier 1: Meta
+	srv.server.AddTool(serverVersionTool, srv.serverVersionHandler)
+	srv.server.AddTool(listOperatorsTool, srv.listOperatorsHandler)
+
+	// Tier 1: Sessions/Beacons
+	srv.server.AddTool(sessionInfoTool, srv.sessionInfoHandler)
+	srv.server.AddTool(killSessionTool, srv.killSessionHandler)
+	srv.server.AddTool(beaconInfoTool, srv.beaconInfoHandler)
+	srv.server.AddTool(killBeaconTool, srv.killBeaconHandler)
+	srv.server.AddTool(listBeaconTasksTool, srv.listBeaconTasksHandler)
+	srv.server.AddTool(cancelBeaconTaskTool, srv.cancelBeaconTaskHandler)
+
+	// Tier 1: Listeners
+	srv.server.AddTool(listJobsTool, srv.listJobsHandler)
+	srv.server.AddTool(startMTLSTool, srv.startMTLSListenerHandler)
+	srv.server.AddTool(startHTTPSTool, srv.startHTTPSListenerHandler)
+	srv.server.AddTool(startHTTPTool, srv.startHTTPListenerHandler)
+	srv.server.AddTool(startDNSTool, srv.startDNSListenerHandler)
+	srv.server.AddTool(startWGTool, srv.startWGListenerHandler)
+	srv.server.AddTool(killJobTool, srv.killJobHandler)
+
+	// Tier 1: Execution
+	srv.server.AddTool(executeTool, srv.executeHandler)
+
+	// Tier 1: Filesystem additions
+	srv.server.AddTool(downloadFileTool, srv.downloadFileHandler)
+	srv.server.AddTool(uploadFileTool, srv.uploadFileHandler)
+
+	// Tier 1: Processes
+	srv.server.AddTool(listProcessesTool, srv.listProcessesHandler)
+
+	// Tier 1: Network
+	srv.server.AddTool(networkInterfacesTool, srv.networkInterfacesHandler)
+	srv.server.AddTool(networkConnectionsTool, srv.networkConnectionsHandler)
+
+	// Tier 1: Environment
+	srv.server.AddTool(getEnvironmentTool, srv.getEnvironmentHandler)
+
+	// Tier 1: Registry
+	srv.server.AddTool(registryReadTool, srv.registryReadHandler)
+
+	// Tier 1: Screenshot
+	srv.server.AddTool(screenshotTool, srv.screenshotHandler)
+
 	return srv
 }
 

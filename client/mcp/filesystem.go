@@ -4,16 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"strings"
-	"time"
 	"unicode/utf8"
 
-	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/bishopfox/sliver/protobuf/commonpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/util/encoders"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -26,10 +21,9 @@ const (
 	cpToolName    = "fs_cp"
 	mkdirToolName = "fs_mkdir"
 	chmodToolName = "fs_chmod"
-	chownToolName = "fs_chown"
-
-	defaultWaitTimeoutSeconds = int64(60)
-	pollInterval              = 1 * time.Second
+	chownToolName    = "fs_chown"
+	downloadToolName = "download_file"
+	uploadToolName   = "upload_file"
 )
 
 type lsArgs struct {
@@ -186,14 +180,6 @@ type chmodResult struct {
 
 type chownResult struct {
 	Path string `json:"path"`
-}
-
-type asyncTaskResult struct {
-	Async     bool   `json:"async"`
-	Operation string `json:"operation"`
-	TaskID    string `json:"task_id"`
-	BeaconID  string `json:"beacon_id,omitempty"`
-	State     string `json:"state,omitempty"`
 }
 
 func (s *SliverMCPServer) lsHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -907,100 +893,6 @@ func (s *SliverMCPServer) handleChown(ctx context.Context, args chownArgs) (*mcp
 	return mcpapi.NewToolResultStructuredOnly(chownResult{Path: path}), nil
 }
 
-func buildRequest(sessionID, beaconID string, timeoutSeconds int64) (*commonpb.Request, bool, error) {
-	if sessionID == "" && beaconID == "" {
-		return nil, false, fmt.Errorf("session_id or beacon_id is required")
-	}
-	if sessionID != "" && beaconID != "" {
-		return nil, false, fmt.Errorf("provide only one of session_id or beacon_id")
-	}
-
-	req := &commonpb.Request{}
-	if timeoutSeconds > 0 {
-		req.Timeout = (int64(time.Second) * timeoutSeconds) - 1
-	}
-
-	if sessionID != "" {
-		req.SessionID = sessionID
-		req.Async = false
-		return req, false, nil
-	}
-
-	req.BeaconID = beaconID
-	req.Async = true
-	return req, true, nil
-}
-
-func applyDefaultTimeout(wait bool, timeoutSeconds int64) int64 {
-	if wait && timeoutSeconds <= 0 {
-		return defaultWaitTimeoutSeconds
-	}
-	return timeoutSeconds
-}
-
-func withTimeout(ctx context.Context, timeoutSeconds int64) (context.Context, context.CancelFunc) {
-	if timeoutSeconds <= 0 {
-		return ctx, nil
-	}
-	return context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
-}
-
-func (s *SliverMCPServer) waitForBeaconTaskResponse(ctx context.Context, taskID string, out proto.Message) error {
-	task, err := s.waitForBeaconTask(ctx, taskID)
-	if err != nil {
-		return err
-	}
-
-	state := strings.ToLower(task.State)
-	if state != "completed" {
-		if state == "" {
-			state = "unknown"
-		}
-		return fmt.Errorf("beacon task %s %s", task.ID, state)
-	}
-	if len(task.Response) == 0 {
-		return fmt.Errorf("beacon task %s returned empty response", task.ID)
-	}
-	return proto.Unmarshal(task.Response, out)
-}
-
-func (s *SliverMCPServer) waitForBeaconTask(ctx context.Context, taskID string) (*clientpb.BeaconTask, error) {
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		task, err := s.Rpc.GetBeaconTaskContent(ctx, &clientpb.BeaconTask{ID: taskID})
-		if err != nil {
-			return nil, err
-		}
-		state := strings.ToLower(task.State)
-		if state == "completed" || state == "failed" || state == "canceled" {
-			return task, nil
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-func newAsyncResult(operation, taskID, beaconID string) *mcpapi.CallToolResult {
-	state := "pending"
-	if taskID == "" {
-		state = "unknown"
-	}
-	result := asyncTaskResult{
-		Async:     true,
-		Operation: operation,
-		TaskID:    taskID,
-		BeaconID:  beaconID,
-		State:     state,
-	}
-	return mcpapi.NewToolResultStructuredOnly(result)
-}
-
 func buildCatResult(download *sliverpb.Download, requestedPath string) (*catResult, error) {
 	data := download.Data
 	decoded := false
@@ -1033,4 +925,174 @@ func buildCatResult(download *sliverpb.Download, requestedPath string) (*catResu
 	}
 
 	return result, nil
+}
+
+// --- Download/Upload args ---
+
+type downloadFileArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	RemotePath     string `json:"remote_path" jsonschema:"description=Remote file path to download,required"`
+	Recurse        bool   `json:"recurse" jsonschema:"description=Recursively download directory"`
+	MaxBytes       int64  `json:"max_bytes" jsonschema:"description=Maximum bytes to download (0 for unlimited)"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+type uploadFileArgs struct {
+	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	RemotePath     string `json:"remote_path" jsonschema:"description=Remote destination path,required"`
+	DataBase64     string `json:"data_base64" jsonschema:"description=File content as base64,required"`
+	IsIOC          bool   `json:"is_ioc" jsonschema:"description=Mark as IOC"`
+	Overwrite      bool   `json:"overwrite" jsonschema:"description=Overwrite existing file"`
+	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+}
+
+// --- Download/Upload results ---
+
+type downloadFileResult struct {
+	Path       string `json:"path"`
+	Exists     bool   `json:"exists"`
+	IsDir      bool   `json:"is_dir"`
+	Size       int    `json:"size"`
+	DataBase64 string `json:"data_base64"`
+	Text       string `json:"text,omitempty"`
+}
+
+type uploadFileResult struct {
+	Path         string `json:"path"`
+	WrittenFiles int32  `json:"written_files"`
+}
+
+// --- Download/Upload handlers ---
+
+func (s *SliverMCPServer) downloadFileHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args downloadFileArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(downloadToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.Download(ctx, &sliverpb.DownloadReq{
+		Path:     args.RemotePath,
+		Recurse:  args.Recurse,
+		MaxBytes: args.MaxBytes,
+		Request:  req,
+	})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("download failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("download_file", taskID, args.BeaconID), nil
+		}
+
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+
+		waited := &sliverpb.Download{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	if !resp.Exists {
+		return mcpapi.NewToolResultError(fmt.Sprintf("remote path does not exist: %s", args.RemotePath)), nil
+	}
+
+	data := resp.Data
+	if resp.Encoder == "gzip" {
+		data, err = new(encoders.Gzip).Decode(resp.Data)
+		if err != nil {
+			return mcpapi.NewToolResultErrorFromErr("failed to decompress", err), nil
+		}
+	}
+
+	result := downloadFileResult{
+		Path:       resp.Path,
+		Exists:     resp.Exists,
+		IsDir:      resp.IsDir,
+		Size:       len(data),
+		DataBase64: base64.StdEncoding.EncodeToString(data),
+	}
+
+	if len(data) > 0 && utf8.Valid(data) {
+		result.Text = string(data)
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(result), nil
+}
+
+func (s *SliverMCPServer) uploadFileHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if s.Rpc == nil {
+		return mcpapi.NewToolResultError("rpc client not configured"), nil
+	}
+
+	var args uploadFileArgs
+	if err := request.BindArguments(&args); err != nil {
+		return mcpapi.NewToolResultError(fmt.Sprintf("invalid arguments: %v", err)), nil
+	}
+
+	data, err := base64.StdEncoding.DecodeString(args.DataBase64)
+	if err != nil {
+		return mcpapi.NewToolResultError("invalid base64 data: " + err.Error()), nil
+	}
+
+	req, isBeacon, err := buildRequest(args.SessionID, args.BeaconID, args.TimeoutSeconds)
+	if err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+	s.logToolCall(uploadToolName, args.SessionID, args.BeaconID)
+
+	resp, err := s.Rpc.Upload(ctx, &sliverpb.UploadReq{
+		Path:      args.RemotePath,
+		Data:      data,
+		IsIOC:     args.IsIOC,
+		Overwrite: args.Overwrite,
+		Request:   req,
+	})
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("upload failed", err), nil
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !args.Wait {
+			return newAsyncResult("upload_file", taskID, args.BeaconID), nil
+		}
+
+		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+
+		waited := &sliverpb.Upload{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
+		}
+		resp = waited
+	}
+
+	return mcpapi.NewToolResultStructuredOnly(uploadFileResult{
+		Path:         resp.Path,
+		WrittenFiles: resp.WrittenFiles,
+	}), nil
 }
