@@ -72,17 +72,17 @@ type deleteImplantBuildArgs struct {
 }
 
 type saveImplantProfileArgs struct {
-	Name                string   `json:"name" jsonschema:"description=Profile name,required"`
-	OS                  string   `json:"os" jsonschema:"description=Target OS,required"`
-	Arch                string   `json:"arch" jsonschema:"description=Target architecture,required"`
-	IsBeacon            bool     `json:"is_beacon" jsonschema:"description=Beacon mode"`
-	BeaconInterval      int64    `json:"beacon_interval" jsonschema:"description=Beacon interval"`
-	BeaconJitter        int64    `json:"beacon_jitter" jsonschema:"description=Beacon jitter"`
-	C2URLs              []string `json:"c2_urls" jsonschema:"description=C2 URLs"`
-	Format              int32    `json:"format" jsonschema:"description=Output format"`
-	Debug               bool     `json:"debug" jsonschema:"description=Debug mode"`
-	Evasion             bool     `json:"evasion" jsonschema:"description=Evasion features"`
-	ObfuscateSymbols    bool     `json:"obfuscate_symbols" jsonschema:"description=Obfuscate symbols"`
+	Name             string   `json:"name" jsonschema:"description=Profile name,required"`
+	OS               string   `json:"os" jsonschema:"description=Target OS,required"`
+	Arch             string   `json:"arch" jsonschema:"description=Target architecture,required"`
+	IsBeacon         bool     `json:"is_beacon" jsonschema:"description=Beacon mode"`
+	BeaconInterval   int64    `json:"beacon_interval" jsonschema:"description=Beacon interval"`
+	BeaconJitter     int64    `json:"beacon_jitter" jsonschema:"description=Beacon jitter"`
+	C2URLs           []string `json:"c2_urls" jsonschema:"description=C2 URLs"`
+	Format           int32    `json:"format" jsonschema:"description=Output format"`
+	Debug            bool     `json:"debug" jsonschema:"description=Debug mode"`
+	Evasion          bool     `json:"evasion" jsonschema:"description=Evasion features"`
+	ObfuscateSymbols bool     `json:"obfuscate_symbols" jsonschema:"description=Obfuscate symbols"`
 }
 
 type deleteImplantProfileArgs struct {
@@ -106,10 +106,10 @@ type shellcodeEncodeArgs struct {
 // --- Results ---
 
 type generateResult struct {
-	FileName     string `json:"file_name"`
-	ImplantName  string `json:"implant_name"`
-	Size         int    `json:"size"`
-	Data         string `json:"data"`
+	FileName    string `json:"file_name"`
+	ImplantName string `json:"implant_name"`
+	Size        int    `json:"size"`
+	Data        string `json:"data"`
 }
 
 type implantBuildItem struct {
@@ -138,8 +138,8 @@ type implantProfilesResult struct {
 }
 
 type compilerResult struct {
-	GOOS   string            `json:"goos"`
-	GOARCH string            `json:"goarch"`
+	GOOS    string           `json:"goos"`
+	GOARCH  string           `json:"goarch"`
 	Targets []compilerTarget `json:"targets"`
 }
 

@@ -28,7 +28,7 @@ type executeArgs struct {
 	Path           string            `json:"path" jsonschema:"description=Path to executable,required"`
 	Args           []string          `json:"args" jsonschema:"description=Command arguments"`
 	Output         bool              `json:"output" jsonschema:"description=Capture stdout/stderr (default: true)"`
-	EnvInheritance bool             `json:"env_inheritance" jsonschema:"description=Inherit parent environment"`
+	EnvInheritance bool              `json:"env_inheritance" jsonschema:"description=Inherit parent environment"`
 	Env            map[string]string `json:"env" jsonschema:"description=Additional environment variables"`
 	PPid           uint32            `json:"ppid" jsonschema:"description=Parent PID for spoofing (Windows)"`
 	Wait           bool              `json:"wait" jsonschema:"description=Wait for beacon task to complete"`

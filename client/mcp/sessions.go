@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	sessionInfoToolName      = "session_info"
-	killSessionToolName      = "kill_session"
-	beaconInfoToolName       = "beacon_info"
-	killBeaconToolName       = "kill_beacon"
-	listBeaconTasksToolName  = "list_beacon_tasks"
-	cancelBeaconTaskToolName  = "cancel_beacon_task"
+	sessionInfoToolName        = "session_info"
+	killSessionToolName        = "kill_session"
+	beaconInfoToolName         = "beacon_info"
+	killBeaconToolName         = "kill_beacon"
+	listBeaconTasksToolName    = "list_beacon_tasks"
+	cancelBeaconTaskToolName   = "cancel_beacon_task"
 	reconfigureImplantToolName = "reconfigure_implant"
 	renameImplantToolName      = "rename_implant"
 )
@@ -268,14 +268,14 @@ func (s *SliverMCPServer) cancelBeaconTaskHandler(ctx context.Context, request m
 // --- Tier 2: Reconfigure Implant ---
 
 type reconfigureImplantArgs struct {
-	SessionID          string `json:"session_id" jsonschema:"description=Session ID"`
-	BeaconID           string `json:"beacon_id" jsonschema:"description=Beacon ID"`
-	ReconnectInterval  int64  `json:"reconnect_interval" jsonschema:"description=Reconnect interval in nanoseconds"`
-	BeaconInterval     int64  `json:"beacon_interval" jsonschema:"description=Beacon check-in interval in nanoseconds"`
-	BeaconJitter       int64  `json:"beacon_jitter" jsonschema:"description=Beacon jitter in nanoseconds"`
-	C2URI              string `json:"c2_uri" jsonschema:"description=New C2 URI"`
-	Wait               bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
-	TimeoutSeconds     int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+	SessionID         string `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID          string `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	ReconnectInterval int64  `json:"reconnect_interval" jsonschema:"description=Reconnect interval in nanoseconds"`
+	BeaconInterval    int64  `json:"beacon_interval" jsonschema:"description=Beacon check-in interval in nanoseconds"`
+	BeaconJitter      int64  `json:"beacon_jitter" jsonschema:"description=Beacon jitter in nanoseconds"`
+	C2URI             string `json:"c2_uri" jsonschema:"description=New C2 URI"`
+	Wait              bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
+	TimeoutSeconds    int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
 }
 
 type reconfigureResult struct {
@@ -369,4 +369,3 @@ func (s *SliverMCPServer) renameImplantHandler(ctx context.Context, request mcpa
 		Success: true,
 	}), nil
 }
-

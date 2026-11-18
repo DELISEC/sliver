@@ -17,18 +17,18 @@ const (
 	lootContentToolName = "loot_content"
 	lootAllToolName     = "loot_all"
 
-	credsListToolName         = "creds_list"
-	credsAddToolName          = "creds_add"
-	credsRmToolName           = "creds_rm"
-	credsUpdateToolName       = "creds_update"
-	credByIDToolName          = "cred_by_id"
-	credsByHashTypeToolName   = "creds_by_hash_type"
+	credsListToolName          = "creds_list"
+	credsAddToolName           = "creds_add"
+	credsRmToolName            = "creds_rm"
+	credsUpdateToolName        = "creds_update"
+	credByIDToolName           = "cred_by_id"
+	credsByHashTypeToolName    = "creds_by_hash_type"
 	credsSniffHashTypeToolName = "creds_sniff_hash_type"
 
-	hostsListToolName  = "hosts_list"
-	hostInfoToolName   = "host_info"
-	hostRmToolName     = "host_rm"
-	hostIOCRmToolName  = "host_ioc_rm"
+	hostsListToolName = "hosts_list"
+	hostInfoToolName  = "host_info"
+	hostRmToolName    = "host_rm"
+	hostIOCRmToolName = "host_ioc_rm"
 )
 
 // --- Loot Args/Results ---

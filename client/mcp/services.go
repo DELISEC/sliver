@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	listServicesToolName      = "list_services"
-	serviceDetailToolName     = "service_detail"
+	listServicesToolName       = "list_services"
+	serviceDetailToolName      = "service_detail"
 	startServiceByNameToolName = "start_service_by_name"
-	startServiceToolName      = "start_service"
-	stopServiceToolName       = "stop_service"
-	removeServiceToolName     = "remove_service"
+	startServiceToolName       = "start_service"
+	stopServiceToolName        = "stop_service"
+	removeServiceToolName      = "remove_service"
 )
 
 // --- Args ---

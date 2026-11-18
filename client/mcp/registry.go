@@ -2,18 +2,18 @@ package mcp
 
 import (
 	"context"
-	"fmt"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
 const (
-	registryReadToolName       = "registry_read"
-	registryWriteToolName      = "registry_write"
-	registryCreateKeyToolName  = "registry_create_key"
-	registryDeleteKeyToolName  = "registry_delete_key"
+	registryReadToolName        = "registry_read"
+	registryWriteToolName       = "registry_write"
+	registryCreateKeyToolName   = "registry_create_key"
+	registryDeleteKeyToolName   = "registry_delete_key"
 	registryListSubkeysToolName = "registry_list_subkeys"
 	registryListValuesToolName  = "registry_list_values"
 	registryReadHiveToolName    = "registry_read_hive"
@@ -504,4 +504,3 @@ func (s *SliverMCPServer) registryReadHiveHandler(ctx context.Context, request m
 		Encoder:    resp.Encoder,
 	}), nil
 }
-

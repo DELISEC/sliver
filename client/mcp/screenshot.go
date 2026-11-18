@@ -2,8 +2,8 @@ package mcp
 
 import (
 	"context"
-	"fmt"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"

@@ -54,12 +54,12 @@ type registerExtensionArgs struct {
 }
 
 type executeBOFArgs struct {
-	SessionID      string          `json:"session_id" jsonschema:"description=Session ID"`
-	BeaconID       string          `json:"beacon_id" jsonschema:"description=Beacon ID"`
-	BOFData        string          `json:"bof_data" jsonschema:"description=Base64-encoded BOF .o file,required"`
-	Arguments      []bofArgument   `json:"arguments" jsonschema:"description=BOF arguments"`
-	Wait           bool            `json:"wait" jsonschema:"description=Wait for beacon task"`
-	TimeoutSeconds int64           `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
+	SessionID      string        `json:"session_id" jsonschema:"description=Session ID"`
+	BeaconID       string        `json:"beacon_id" jsonschema:"description=Beacon ID"`
+	BOFData        string        `json:"bof_data" jsonschema:"description=Base64-encoded BOF .o file,required"`
+	Arguments      []bofArgument `json:"arguments" jsonschema:"description=BOF arguments"`
+	Wait           bool          `json:"wait" jsonschema:"description=Wait for beacon task"`
+	TimeoutSeconds int64         `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
 }
 
 type bofArgument struct {
@@ -84,10 +84,10 @@ type runBOFModuleArgs struct {
 // --- BOF Module manifest ---
 
 type bofManifest struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	BOFFile     string        `json:"bof_file"`
-	Arguments   []bofArgSpec  `json:"arguments"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	BOFFile     string       `json:"bof_file"`
+	Arguments   []bofArgSpec `json:"arguments"`
 }
 
 type bofArgSpec struct {

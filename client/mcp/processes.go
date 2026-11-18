@@ -179,7 +179,7 @@ type processDumpArgs struct {
 }
 
 type processDumpResult struct {
-	Size int `json:"size"`
+	Size int    `json:"size"`
 	Data string `json:"data"`
 }
 

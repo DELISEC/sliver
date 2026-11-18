@@ -16,22 +16,22 @@ const (
 )
 
 type generatePackedImplantArgs struct {
-	Name                string   `json:"name" jsonschema:"description=Name for the implant"`
-	OS                  string   `json:"os" jsonschema:"description=Target OS (windows/linux/darwin),required"`
-	Arch                string   `json:"arch" jsonschema:"description=Target architecture (amd64/386/arm64),required"`
-	IsBeacon            bool     `json:"is_beacon" jsonschema:"description=Generate as beacon"`
-	BeaconInterval      int64    `json:"beacon_interval" jsonschema:"description=Beacon interval in nanoseconds"`
-	BeaconJitter        int64    `json:"beacon_jitter" jsonschema:"description=Beacon jitter in nanoseconds"`
-	C2URLs              []string `json:"c2_urls" jsonschema:"description=C2 URLs,required"`
-	Format              int32    `json:"format" jsonschema:"description=Output format"`
-	Debug               bool     `json:"debug" jsonschema:"description=Debug mode"`
-	Evasion             bool     `json:"evasion" jsonschema:"description=Evasion features"`
-	ObfuscateSymbols    bool     `json:"obfuscate_symbols" jsonschema:"description=Obfuscate symbols"`
-	IncludeMTLS         bool     `json:"include_mtls" jsonschema:"description=Include mTLS transport"`
-	IncludeHTTP         bool     `json:"include_http" jsonschema:"description=Include HTTP transport"`
-	IncludeWG           bool     `json:"include_wg" jsonschema:"description=Include WireGuard transport"`
-	IncludeDNS          bool     `json:"include_dns" jsonschema:"description=Include DNS transport"`
-	PackerArgs          []string `json:"packer_args" jsonschema:"description=Additional arguments for the zergling packer"`
+	Name             string   `json:"name" jsonschema:"description=Name for the implant"`
+	OS               string   `json:"os" jsonschema:"description=Target OS (windows/linux/darwin),required"`
+	Arch             string   `json:"arch" jsonschema:"description=Target architecture (amd64/386/arm64),required"`
+	IsBeacon         bool     `json:"is_beacon" jsonschema:"description=Generate as beacon"`
+	BeaconInterval   int64    `json:"beacon_interval" jsonschema:"description=Beacon interval in nanoseconds"`
+	BeaconJitter     int64    `json:"beacon_jitter" jsonschema:"description=Beacon jitter in nanoseconds"`
+	C2URLs           []string `json:"c2_urls" jsonschema:"description=C2 URLs,required"`
+	Format           int32    `json:"format" jsonschema:"description=Output format"`
+	Debug            bool     `json:"debug" jsonschema:"description=Debug mode"`
+	Evasion          bool     `json:"evasion" jsonschema:"description=Evasion features"`
+	ObfuscateSymbols bool     `json:"obfuscate_symbols" jsonschema:"description=Obfuscate symbols"`
+	IncludeMTLS      bool     `json:"include_mtls" jsonschema:"description=Include mTLS transport"`
+	IncludeHTTP      bool     `json:"include_http" jsonschema:"description=Include HTTP transport"`
+	IncludeWG        bool     `json:"include_wg" jsonschema:"description=Include WireGuard transport"`
+	IncludeDNS       bool     `json:"include_dns" jsonschema:"description=Include DNS transport"`
+	PackerArgs       []string `json:"packer_args" jsonschema:"description=Additional arguments for the zergling packer"`
 }
 
 func (s *SliverMCPServer) generatePackedImplantHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
