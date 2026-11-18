@@ -64,6 +64,7 @@ type SliverMCPServer struct {
 	server        *mcpserver.MCPServer
 	logger        *log.Logger
 	BOFModulesDir string
+	OverlordDir   string
 	ZerglingPath  string
 }
 
@@ -320,6 +321,7 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 		server:        base,
 		logger:        logger,
 		BOFModulesDir: cfg.BOFModulesDir,
+		OverlordDir:   cfg.OverlordDir,
 		ZerglingPath:  cfg.ZerglingPath,
 	}
 
@@ -940,6 +942,20 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	srv.server.AddTool(executeBOFTool, srv.executeBOFHandler)
 	srv.server.AddTool(listBOFModulesTool, srv.listBOFModulesHandler)
 	srv.server.AddTool(runBOFModuleTool, srv.runBOFModuleHandler)
+
+	// Overlord suite tools
+	listOverlordSuitesTool := mcpapi.NewTool(listOverlordSuitesToolName,
+		mcpapi.WithDescription("List available Overlord BOF suites (recon, network, privesc, fullrecon, etc.)."),
+		mcpapi.WithInputSchema[listOverlordSuitesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithIdempotentHintAnnotation(true),
+	)
+	runOverlordSuiteTool := mcpapi.NewTool(runOverlordSuiteToolName,
+		mcpapi.WithDescription("Run an Overlord BOF suite against a session/beacon. Executes all BOFs in the suite sequentially and returns structured output from each. Use list_overlord_suites to see available suites."),
+		mcpapi.WithInputSchema[runOverlordSuiteArgs](),
+	)
+	srv.server.AddTool(listOverlordSuitesTool, srv.listOverlordSuitesHandler)
+	srv.server.AddTool(runOverlordSuiteTool, srv.runOverlordSuiteHandler)
 
 	// ===== Tier 8: Advanced =====
 

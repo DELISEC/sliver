@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sliver": {
+      "command": "/Users/delifer/src/sliver/sliver-client",
+      "args": ["mcp", "--config", "local.cfg", "--zergling-path", "/Users/delifer/src/zergling/target/aarch64-apple-darwin/release/launcher", "--overlord-dir", "/Users/delifer/src/overlord"]
+    }
+  }
+}

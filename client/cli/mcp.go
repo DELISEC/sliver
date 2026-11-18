@@ -51,6 +51,7 @@ Use --transport http to start an HTTP server (for multiplayer / remote agents).`
 	mcpCmd.Flags().String("listen", "127.0.0.1:8080", "Listen address for HTTP/SSE transport")
 	mcpCmd.Flags().String("zergling-path", "", "Path to zergling packer binary (enables generate_packed_implant)")
 	mcpCmd.Flags().String("bof-modules-dir", "", "Directory containing BOF modules")
+	mcpCmd.Flags().String("overlord-dir", "", "Path to overlord repo root (enables run_overlord_suite)")
 	return mcpCmd
 }
 
@@ -85,12 +86,14 @@ func runMCP(cmd *cobra.Command, con *console.SliverClient) error {
 
 	zerglingPath, _ := cmd.Flags().GetString("zergling-path")
 	bofModulesDir, _ := cmd.Flags().GetString("bof-modules-dir")
+	overlordDir, _ := cmd.Flags().GetString("overlord-dir")
 
 	rawTransport, _ := cmd.Flags().GetString("transport")
 	if rawTransport == "stdio" || rawTransport == "" {
 		cfg := clientmcp.DefaultConfig()
 		cfg.ZerglingPath = zerglingPath
 		cfg.BOFModulesDir = bofModulesDir
+		cfg.OverlordDir = overlordDir
 		if err := clientmcp.ServeStdio(cfg, con.Rpc); err != nil {
 			fmt.Printf("MCP server error: %s\n", err)
 			return nil
@@ -110,6 +113,7 @@ func runMCP(cmd *cobra.Command, con *console.SliverClient) error {
 		ListenAddress: listen,
 		ZerglingPath:  zerglingPath,
 		BOFModulesDir: bofModulesDir,
+		OverlordDir:   overlordDir,
 	}.WithDefaults()
 
 	if err := clientmcp.Start(cfg, con.Rpc); err != nil {

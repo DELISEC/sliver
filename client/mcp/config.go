@@ -24,6 +24,7 @@ type Config struct {
 	ServerName    string
 	ServerVersion string
 	BOFModulesDir string
+	OverlordDir   string
 	ZerglingPath  string
 }
 
