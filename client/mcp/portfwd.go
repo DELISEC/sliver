@@ -152,10 +152,8 @@ func (s *SliverMCPServer) startRportFwdHandler(ctx context.Context, request mcpa
 	s.logToolCall(startRportFwdToolName, args.SessionID, args.BeaconID)
 
 	resp, err := s.Rpc.StartRportFwdListener(ctx, &sliverpb.RportFwdStartListenerReq{
-		BindAddress:    args.BindAddress,
-		BindPort:       args.BindPort,
-		ForwardPort:    args.ForwardPort,
-		ForwardAddress: args.ForwardAddress,
+		BindAddress:    fmt.Sprintf("%s:%d", args.BindAddress, args.BindPort),
+		ForwardAddress: fmt.Sprintf("%s:%d", args.ForwardAddress, args.ForwardPort),
 		Request:        req,
 	})
 	if err != nil {

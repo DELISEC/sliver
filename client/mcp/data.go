@@ -130,11 +130,11 @@ type credsListResult struct {
 // --- Host Args/Results ---
 
 type hostInfoArgs struct {
-	HostID string `json:"host_id" jsonschema:"description=Host ID to get info for,required"`
+	HostID string `json:"host_id" jsonschema:"description=Host UUID from hosts_list (host_uuid field),required"`
 }
 
 type hostRmArgs struct {
-	HostID string `json:"host_id" jsonschema:"description=Host ID to remove,required"`
+	HostID string `json:"host_id" jsonschema:"description=Host UUID from hosts_list (host_uuid field),required"`
 }
 
 type hostIOCRmArgs struct {
@@ -529,7 +529,7 @@ func (s *SliverMCPServer) hostInfoHandler(ctx context.Context, request mcpapi.Ca
 	}
 	s.logToolCall(hostInfoToolName, "", "")
 
-	resp, err := s.Rpc.Host(ctx, &clientpb.Host{ID: args.HostID})
+	resp, err := s.Rpc.Host(ctx, &clientpb.Host{HostUUID: args.HostID})
 	if err != nil {
 		return mcpapi.NewToolResultErrorFromErr("host_info failed", err), nil
 	}
@@ -548,7 +548,7 @@ func (s *SliverMCPServer) hostRmHandler(ctx context.Context, request mcpapi.Call
 	}
 	s.logToolCall(hostRmToolName, "", "")
 
-	if _, err := s.Rpc.HostRm(ctx, &clientpb.Host{ID: args.HostID}); err != nil {
+	if _, err := s.Rpc.HostRm(ctx, &clientpb.Host{HostUUID: args.HostID}); err != nil {
 		return mcpapi.NewToolResultErrorFromErr("host_rm failed", err), nil
 	}
 

@@ -112,7 +112,7 @@ type registryWriteArgs struct {
 	ByteValueBase64 string `json:"byte_value_base64" jsonschema:"description=Binary value as base64"`
 	DWordValue      uint32 `json:"dword_value" jsonschema:"description=DWORD value"`
 	QWordValue      uint64 `json:"qword_value" jsonschema:"description=QWORD value"`
-	RegType         uint32 `json:"reg_type" jsonschema:"description=Registry value type (1=SZ 2=EXPAND_SZ 3=BINARY 4=DWORD 11=QWORD),required"`
+	RegType         uint32 `json:"reg_type" jsonschema:"description=Registry value type: 1=Binary 2=String(REG_SZ) 3=DWORD 4=QWORD,required"`
 	Wait            bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
 	TimeoutSeconds  int64  `json:"timeout_seconds" jsonschema:"description=Timeout in seconds"`
 }
