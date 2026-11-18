@@ -373,10 +373,10 @@ func TestIntegration(t *testing.T) {
 	// --- Data round-trips ---
 	t.Run("loot_roundtrip", func(t *testing.T) {
 		addResult := client.callTool(t, "loot_add", map[string]interface{}{
-			"name":      "mcp-test-loot",
-			"loot_type": 1,
-			"file_type": 0,
-			"data":      "dGVzdCBkYXRh",
+			"name":        "mcp-test-loot",
+			"file_type":   2,
+			"file_name":   "test.txt",
+			"data_base64": "dGVzdCBkYXRh",
 		})
 		t.Logf("loot_add: %s", truncate(string(addResult), 300))
 

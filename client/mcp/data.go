@@ -179,6 +179,7 @@ func (s *SliverMCPServer) lootAddHandler(ctx context.Context, request mcpapi.Cal
 		Name:           args.Name,
 		FileType:       clientpb.FileType(args.FileType),
 		OriginHostUUID: args.OriginHostUUID,
+		File:           &commonpb.File{Name: args.FileName},
 	}
 
 	if args.DataBase64 != "" {
@@ -186,10 +187,7 @@ func (s *SliverMCPServer) lootAddHandler(ctx context.Context, request mcpapi.Cal
 		if err != nil {
 			return mcpapi.NewToolResultError(fmt.Sprintf("invalid base64 data: %v", err)), nil
 		}
-		loot.File = &commonpb.File{
-			Name: args.FileName,
-			Data: data,
-		}
+		loot.File.Data = data
 	}
 
 	resp, err := s.Rpc.LootAdd(ctx, loot)

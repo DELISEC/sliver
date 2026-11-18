@@ -55,10 +55,14 @@ func (l *LocalBackend) Add(loot *clientpb.Loot) (*clientpb.Loot, error) {
 	} else {
 		hostID = host.HostUUID
 	}
+	var fileSize int64
+	if loot.File != nil {
+		fileSize = int64(len(loot.File.Data))
+	}
 	dbLoot := &models.Loot{
 		Name:         loot.GetName(),
 		FileType:     int(loot.GetFileType()),
-		Size:         int64(len(loot.File.Data)),
+		Size:         fileSize,
 		OriginHostID: hostID,
 	}
 	dbSession := db.Session()
@@ -81,10 +85,13 @@ func (l *LocalBackend) Add(loot *clientpb.Loot) (*clientpb.Loot, error) {
 
 	// Fetch a fresh version of the object
 	loot, err = l.GetContent(dbLoot.ID.String(), false)
-	if loot.File != nil {
+	if err != nil {
+		return nil, err
+	}
+	if loot != nil && loot.File != nil {
 		loot.File.Data = nil
 	}
-	return loot, err
+	return loot, nil
 }
 
 // Update - Update metadata about loot, currently only 'name' can be changed
