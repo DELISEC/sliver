@@ -519,6 +519,85 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	srv.server.AddTool(reconfigureImplantTool, srv.reconfigureImplantHandler)
 	srv.server.AddTool(renameImplantTool, srv.renameImplantHandler)
 
+	// ===== Tier 3: Privilege Escalation & Services =====
+
+	// Tier 3: Privilege
+	getSystemTool := mcpapi.NewTool(getSystemToolName,
+		mcpapi.WithDescription("Attempt to get SYSTEM privileges on Windows via named pipe impersonation."),
+		mcpapi.WithInputSchema[getSystemArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	runAsTool := mcpapi.NewTool(runAsToolName,
+		mcpapi.WithDescription("Execute a process as another user (Windows runas)."),
+		mcpapi.WithInputSchema[runAsArgs](),
+	)
+	impersonateTool := mcpapi.NewTool(impersonateToolName,
+		mcpapi.WithDescription("Impersonate a logged-in user's token (Windows)."),
+		mcpapi.WithInputSchema[impersonateArgs](),
+	)
+	revToSelfTool := mcpapi.NewTool(revToSelfToolName,
+		mcpapi.WithDescription("Revert token to original user after impersonation (Windows)."),
+		mcpapi.WithInputSchema[revToSelfArgs](),
+	)
+	makeTokenTool := mcpapi.NewTool(makeTokenToolName,
+		mcpapi.WithDescription("Create a Windows logon token with credentials."),
+		mcpapi.WithInputSchema[makeTokenArgs](),
+	)
+	currentTokenOwnerTool := mcpapi.NewTool(currentTokenOwnerToolName,
+		mcpapi.WithDescription("Get the owner of the current process token (Windows)."),
+		mcpapi.WithInputSchema[currentTokenOwnerArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	getPrivsTool := mcpapi.NewTool(getPrivsToolName,
+		mcpapi.WithDescription("List current Windows token privileges and process integrity."),
+		mcpapi.WithInputSchema[getPrivsArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	srv.server.AddTool(getSystemTool, srv.getSystemHandler)
+	srv.server.AddTool(runAsTool, srv.runAsHandler)
+	srv.server.AddTool(impersonateTool, srv.impersonateHandler)
+	srv.server.AddTool(revToSelfTool, srv.revToSelfHandler)
+	srv.server.AddTool(makeTokenTool, srv.makeTokenHandler)
+	srv.server.AddTool(currentTokenOwnerTool, srv.currentTokenOwnerHandler)
+	srv.server.AddTool(getPrivsTool, srv.getPrivsHandler)
+
+	// Tier 3: Services
+	listServicesTool := mcpapi.NewTool(listServicesToolName,
+		mcpapi.WithDescription("List Windows services on the target."),
+		mcpapi.WithInputSchema[listServicesArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	serviceDetailTool := mcpapi.NewTool(serviceDetailToolName,
+		mcpapi.WithDescription("Get detailed info about a specific Windows service."),
+		mcpapi.WithInputSchema[serviceDetailArgs](),
+		mcpapi.WithReadOnlyHintAnnotation(true),
+	)
+	startServiceByNameTool := mcpapi.NewTool(startServiceByNameToolName,
+		mcpapi.WithDescription("Start an existing Windows service by name."),
+		mcpapi.WithInputSchema[startServiceByNameArgs](),
+	)
+	startServiceTool := mcpapi.NewTool(startServiceToolName,
+		mcpapi.WithDescription("Create and start a new Windows service with a custom binary."),
+		mcpapi.WithInputSchema[startServiceArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	stopServiceTool := mcpapi.NewTool(stopServiceToolName,
+		mcpapi.WithDescription("Stop a running Windows service."),
+		mcpapi.WithInputSchema[stopServiceArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	removeServiceTool := mcpapi.NewTool(removeServiceToolName,
+		mcpapi.WithDescription("Remove a Windows service from the system."),
+		mcpapi.WithInputSchema[removeServiceArgs](),
+		mcpapi.WithDestructiveHintAnnotation(true),
+	)
+	srv.server.AddTool(listServicesTool, srv.listServicesHandler)
+	srv.server.AddTool(serviceDetailTool, srv.serviceDetailHandler)
+	srv.server.AddTool(startServiceByNameTool, srv.startServiceByNameHandler)
+	srv.server.AddTool(startServiceTool, srv.startServiceHandler)
+	srv.server.AddTool(stopServiceTool, srv.stopServiceHandler)
+	srv.server.AddTool(removeServiceTool, srv.removeServiceHandler)
+
 	return srv
 }
 
