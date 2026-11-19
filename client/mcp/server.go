@@ -259,9 +259,9 @@ func newServer(cfg Config, rpc rpcpb.SliverRPCClient, logger *log.Logger) *Slive
 	// --- Tier 1: Filesystem additions ---
 	downloadFileTool := mcpapi.NewTool(
 		downloadToolName,
-		mcpapi.WithDescription("Download a file from the remote target. Returns content as base64 and text if valid UTF-8."),
+		mcpapi.WithDescription("Download a file from the remote target. Saves the file to the operator's local disk (default: ./<filename>) and returns the local path. Use local_path to specify a different save location. Small UTF-8 files include a text preview."),
 		mcpapi.WithInputSchema[downloadFileArgs](),
-		mcpapi.WithReadOnlyHintAnnotation(true),
+		mcpapi.WithReadOnlyHintAnnotation(false),
 	)
 	uploadFileTool := mcpapi.NewTool(
 		uploadToolName,

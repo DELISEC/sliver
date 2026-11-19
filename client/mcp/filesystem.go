@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"unicode/utf8"
 
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
@@ -940,6 +941,7 @@ type downloadFileArgs struct {
 	SessionID      string `json:"session_id" jsonschema:"description=Session ID"`
 	BeaconID       string `json:"beacon_id" jsonschema:"description=Beacon ID"`
 	RemotePath     string `json:"remote_path" jsonschema:"description=Remote file path to download,required"`
+	LocalPath      string `json:"local_path" jsonschema:"description=Local path to save the downloaded file (default: ./<filename>)"`
 	Recurse        bool   `json:"recurse" jsonschema:"description=Recursively download directory"`
 	MaxBytes       int64  `json:"max_bytes" jsonschema:"description=Maximum bytes to download (0 for unlimited)"`
 	Wait           bool   `json:"wait" jsonschema:"description=Wait for beacon task to complete"`
@@ -961,12 +963,12 @@ type uploadFileArgs struct {
 // --- Download/Upload results ---
 
 type downloadFileResult struct {
-	Path       string `json:"path"`
+	RemotePath string `json:"remote_path"`
+	LocalPath  string `json:"local_path"`
 	Exists     bool   `json:"exists"`
 	IsDir      bool   `json:"is_dir"`
 	Size       int    `json:"size"`
-	DataBase64 string `json:"data_base64"`
-	Text       string `json:"text,omitempty"`
+	Preview    string `json:"preview,omitempty"`
 }
 
 type uploadFileResult struct {
@@ -1033,16 +1035,42 @@ func (s *SliverMCPServer) downloadFileHandler(ctx context.Context, request mcpap
 		}
 	}
 
+	localPath := args.LocalPath
+	if localPath == "" {
+		baseName := filepath.Base(args.RemotePath)
+		if resp.IsDir {
+			baseName += ".tar.gz"
+		}
+		localPath = filepath.Join(".", baseName)
+	}
+
+	localPath, err = filepath.Abs(localPath)
+	if err != nil {
+		return mcpapi.NewToolResultErrorFromErr("failed to resolve local path", err), nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o700); err != nil {
+		return mcpapi.NewToolResultErrorFromErr("failed to create directory", err), nil
+	}
+	if err := os.WriteFile(localPath, data, 0o600); err != nil {
+		return mcpapi.NewToolResultErrorFromErr("failed to write file", err), nil
+	}
+
 	result := downloadFileResult{
-		Path:       resp.Path,
+		RemotePath: resp.Path,
+		LocalPath:  localPath,
 		Exists:     resp.Exists,
 		IsDir:      resp.IsDir,
 		Size:       len(data),
-		DataBase64: base64.StdEncoding.EncodeToString(data),
 	}
 
-	if len(data) > 0 && utf8.Valid(data) {
-		result.Text = string(data)
+	const maxPreview = 4096
+	if len(data) > 0 && !resp.IsDir && utf8.Valid(data) {
+		if len(data) <= maxPreview {
+			result.Preview = string(data)
+		} else {
+			result.Preview = string(data[:maxPreview]) + "\n... (truncated)"
+		}
 	}
 
 	return mcpapi.NewToolResultStructuredOnly(result), nil
