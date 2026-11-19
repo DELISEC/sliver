@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -304,7 +305,7 @@ func (s *SliverMCPServer) registerExtensionHandler(ctx context.Context, request 
 }
 
 func packBOFArgs(arguments []bofArgument) ([]byte, error) {
-	buf := core.BOFArgsBuffer{}
+	buf := core.BOFArgsBuffer{Buffer: new(bytes.Buffer)}
 	for _, arg := range arguments {
 		switch arg.Type {
 		case "string":
