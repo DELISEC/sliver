@@ -8,6 +8,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/protobuf/proto"
 )
@@ -139,6 +140,53 @@ func (s *SliverMCPServer) waitForBeaconTask(ctx context.Context, taskID string) 
 		case <-ticker.C:
 		}
 	}
+}
+
+// callBOFResult holds the outcome of a single BOF execution.
+type callBOFResult struct {
+	Output      string
+	RespErr     string
+	AsyncTaskID string // non-empty only when beacon + !wait
+}
+
+// callBOF is the single code path for executing a BOF via CallExtension.
+// Both execute_bof, run_bof_module, and run_overlord_suite delegate here.
+func (s *SliverMCPServer) callBOF(ctx context.Context, req *commonpb.Request, isBeacon bool, bofData, bofArgs []byte, wait bool, timeoutSeconds int64) (*callBOFResult, error) {
+	resp, err := s.Rpc.CallExtension(ctx, &sliverpb.CallExtensionReq{
+		IsBOF:          true,
+		BOFData:        bofData,
+		Export:         "go",
+		Args:           bofArgs,
+		WantBOFOutputs: true,
+		Request:        req,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if isBeacon && resp.Response != nil && resp.Response.Async {
+		taskID := resp.Response.TaskID
+		if !wait {
+			return &callBOFResult{AsyncTaskID: taskID}, nil
+		}
+		timeout := applyDefaultTimeout(true, timeoutSeconds)
+		tctx, cancel := withTimeout(ctx, timeout)
+		if cancel != nil {
+			defer cancel()
+		}
+		waited := &sliverpb.CallExtension{}
+		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
+			return nil, err
+		}
+		resp = waited
+	}
+
+	output := bofOutputString(resp)
+	var respErr string
+	if resp.Response != nil {
+		respErr = resp.Response.Err
+	}
+	return &callBOFResult{Output: output, RespErr: respErr}, nil
 }
 
 func newAsyncResult(operation, taskID, beaconID string) *mcpapi.CallToolResult {

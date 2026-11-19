@@ -386,41 +386,18 @@ func (s *SliverMCPServer) executeBOFHandler(ctx context.Context, request mcpapi.
 		}
 	}
 
-	resp, err := s.Rpc.CallExtension(ctx, &sliverpb.CallExtensionReq{
-		IsBOF:          true,
-		BOFData:        bofData,
-		Export:         "go",
-		Args:           packedArgs,
-		WantBOFOutputs: true,
-		Request:        req,
-	})
+	result, err := s.callBOF(ctx, req, isBeacon, bofData, packedArgs, args.Wait, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultErrorFromErr("execute_bof failed", err), nil
 	}
-
-	if isBeacon && resp.Response != nil && resp.Response.Async {
-		taskID := resp.Response.TaskID
-		if !args.Wait {
-			return newAsyncResult("execute_bof", taskID, args.BeaconID), nil
-		}
-		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
-		tctx, cancel := withTimeout(ctx, timeout)
-		if cancel != nil {
-			defer cancel()
-		}
-		waited := &sliverpb.CallExtension{}
-		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
-			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
-		}
-		resp = waited
+	if result.AsyncTaskID != "" {
+		return newAsyncResult("execute_bof", result.AsyncTaskID, args.BeaconID), nil
 	}
-
-	output := bofOutputString(resp)
-	if output == "" && resp.Response != nil && resp.Response.Err != "" {
-		return mcpapi.NewToolResultError(fmt.Sprintf("BOF error: %s", resp.Response.Err)), nil
+	if result.Output == "" && result.RespErr != "" {
+		return mcpapi.NewToolResultError(fmt.Sprintf("BOF error: %s", result.RespErr)), nil
 	}
 	return mcpapi.NewToolResultStructuredOnly(extensionResult{
-		Output: output,
+		Output: result.Output,
 	}), nil
 }
 
@@ -503,19 +480,6 @@ func (s *SliverMCPServer) runBOFModuleHandler(ctx context.Context, request mcpap
 		return mcpapi.NewToolResultError(fmt.Sprintf("failed to read BOF file: %v", err)), nil
 	}
 
-	bofB64 := base64.StdEncoding.EncodeToString(bofBytes)
-
-	inner := executeBOFArgs{
-		SessionID:      args.SessionID,
-		BeaconID:       args.BeaconID,
-		BOFData:        bofB64,
-		Arguments:      args.Arguments,
-		Wait:           args.Wait,
-		TimeoutSeconds: args.TimeoutSeconds,
-	}
-	innerReq := mcpapi.CallToolRequest{}
-	innerReq.Params.Name = executeBOFToolName
-
 	req, isBeacon, err := s.buildCheckedRequest(ctx, args.SessionID, args.BeaconID, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultError(err.Error()), nil
@@ -523,47 +487,24 @@ func (s *SliverMCPServer) runBOFModuleHandler(ctx context.Context, request mcpap
 	s.logToolCall(runBOFModuleToolName, args.SessionID, args.BeaconID)
 
 	var packedArgs []byte
-	if len(inner.Arguments) > 0 {
-		packedArgs, err = packBOFArgs(inner.Arguments)
+	if len(args.Arguments) > 0 {
+		packedArgs, err = packBOFArgs(args.Arguments)
 		if err != nil {
 			return mcpapi.NewToolResultError(fmt.Sprintf("failed to pack BOF args: %v", err)), nil
 		}
 	}
 
-	resp, err := s.Rpc.CallExtension(ctx, &sliverpb.CallExtensionReq{
-		IsBOF:          true,
-		BOFData:        bofBytes,
-		Export:         "go",
-		Args:           packedArgs,
-		WantBOFOutputs: true,
-		Request:        req,
-	})
+	result, err := s.callBOF(ctx, req, isBeacon, bofBytes, packedArgs, args.Wait, args.TimeoutSeconds)
 	if err != nil {
 		return mcpapi.NewToolResultErrorFromErr("run_bof_module failed", err), nil
 	}
-
-	if isBeacon && resp.Response != nil && resp.Response.Async {
-		taskID := resp.Response.TaskID
-		if !args.Wait {
-			return newAsyncResult("run_bof_module", taskID, args.BeaconID), nil
-		}
-		timeout := applyDefaultTimeout(true, args.TimeoutSeconds)
-		tctx, cancel := withTimeout(ctx, timeout)
-		if cancel != nil {
-			defer cancel()
-		}
-		waited := &sliverpb.CallExtension{}
-		if err := s.waitForBeaconTaskResponse(tctx, taskID, waited); err != nil {
-			return mcpapi.NewToolResultErrorFromErr("beacon task failed", err), nil
-		}
-		resp = waited
+	if result.AsyncTaskID != "" {
+		return newAsyncResult("run_bof_module", result.AsyncTaskID, args.BeaconID), nil
 	}
-
-	output := bofOutputString(resp)
-	if output == "" && resp.Response != nil && resp.Response.Err != "" {
-		return mcpapi.NewToolResultError(fmt.Sprintf("BOF error: %s", resp.Response.Err)), nil
+	if result.Output == "" && result.RespErr != "" {
+		return mcpapi.NewToolResultError(fmt.Sprintf("BOF error: %s", result.RespErr)), nil
 	}
 	return mcpapi.NewToolResultStructuredOnly(extensionResult{
-		Output: output,
+		Output: result.Output,
 	}), nil
 }

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -191,60 +190,33 @@ func (s *SliverMCPServer) runOverlordSuiteHandler(ctx context.Context, request m
 		}
 
 		start := time.Now()
-		resp, rpcErr := s.Rpc.CallExtension(ctx, &sliverpb.CallExtensionReq{
-			IsBOF:          true,
-			BOFData:        bofData,
-			Export:          "go",
-			WantBOFOutputs: true,
-			Request:         req,
-		})
+		result, callErr := s.callBOF(ctx, req, isBeacon, bofData, nil, args.Wait, perBOFTimeout)
 		elapsed := time.Since(start).Milliseconds()
 
-		if rpcErr != nil {
+		if callErr != nil {
 			results = append(results, bofResult{
 				BOF:       bofName,
-				Error:     rpcErr.Error(),
+				Error:     callErr.Error(),
 				ElapsedMs: elapsed,
 			})
 			continue
 		}
 
-		if isBeacon && resp.Response != nil && resp.Response.Async {
-			taskID := resp.Response.TaskID
-			if !args.Wait {
-				results = append(results, bofResult{
-					BOF:       bofName,
-					Success:   true,
-					Output:    fmt.Sprintf("async task queued: %d", taskID),
-					ElapsedMs: elapsed,
-				})
-				succeeded++
-				continue
-			}
-			timeout := applyDefaultTimeout(true, perBOFTimeout)
-			tctx, cancel := withTimeout(ctx, timeout)
-			waited := &sliverpb.CallExtension{}
-			waitErr := s.waitForBeaconTaskResponse(tctx, taskID, waited)
-			if cancel != nil {
-				cancel()
-			}
-			if waitErr != nil {
-				results = append(results, bofResult{
-					BOF:       bofName,
-					Error:     waitErr.Error(),
-					ElapsedMs: time.Since(start).Milliseconds(),
-				})
-				continue
-			}
-			resp = waited
-			elapsed = time.Since(start).Milliseconds()
-		}
-
-		output := bofOutputString(resp)
-		if output == "" && resp.Response != nil && resp.Response.Err != "" {
+		if result.AsyncTaskID != "" {
 			results = append(results, bofResult{
 				BOF:       bofName,
-				Error:     resp.Response.Err,
+				Success:   true,
+				Output:    fmt.Sprintf("async task queued: %s", result.AsyncTaskID),
+				ElapsedMs: elapsed,
+			})
+			succeeded++
+			continue
+		}
+
+		if result.Output == "" && result.RespErr != "" {
+			results = append(results, bofResult{
+				BOF:       bofName,
+				Error:     result.RespErr,
 				ElapsedMs: elapsed,
 			})
 			continue
@@ -253,7 +225,7 @@ func (s *SliverMCPServer) runOverlordSuiteHandler(ctx context.Context, request m
 		results = append(results, bofResult{
 			BOF:       bofName,
 			Success:   true,
-			Output:    output,
+			Output:    result.Output,
 			ElapsedMs: elapsed,
 		})
 		succeeded++
